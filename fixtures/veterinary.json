@@ -1,0 +1,77 @@
+{
+  "systemName": "ClinicaVeterinaria",
+  "entities": [
+    {
+      "name": "Cliente",
+      "fields": [
+        { "name": "nombre", "type": "String", "required": true },
+        { "name": "telefono", "type": "String", "required": true },
+        { "name": "email", "type": "String", "required": false }
+      ]
+    },
+    {
+      "name": "Mascota",
+      "fields": [
+        { "name": "nombre", "type": "String", "required": true },
+        { "name": "especie", "type": "String", "required": true },
+        { "name": "raza", "type": "String", "required": false },
+        { "name": "fechaNacimiento", "type": "LocalDate", "required": false }
+      ]
+    },
+    {
+      "name": "Veterinario",
+      "fields": [
+        { "name": "nombre", "type": "String", "required": true },
+        { "name": "especialidad", "type": "String", "required": true },
+        { "name": "numeroLicencia", "type": "String", "required": true, "unique": true }
+      ]
+    },
+    {
+      "name": "Cita",
+      "fields": [
+        { "name": "fechaHora", "type": "Instant", "required": true },
+        { "name": "motivo", "type": "String", "required": true },
+        { "name": "completada", "type": "Boolean", "required": true }
+      ]
+    },
+    {
+      "name": "Tratamiento",
+      "fields": [
+        { "name": "descripcion", "type": "String", "required": true },
+        { "name": "medicamentos", "type": "String", "required": false },
+        { "name": "costo", "type": "BigDecimal", "required": true }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from": "Cliente",
+      "to": "Mascota",
+      "type": "one-to-many",
+      "description": "Un cliente puede tener varias mascotas"
+    },
+    {
+      "from": "Mascota",
+      "to": "Cita",
+      "type": "one-to-many",
+      "description": "Una mascota puede registrar varias citas médicas"
+    },
+    {
+      "from": "Veterinario",
+      "to": "Cita",
+      "type": "one-to-many",
+      "description": "Un veterinario puede atender múltiples citas"
+    },
+    {
+      "from": "Cita",
+      "to": "Tratamiento",
+      "type": "one-to-many",
+      "description": "Una cita puede derivar en uno o más tratamientos"
+    }
+  ],
+  "observations": [
+    "⚠ No se especificó si los tratamientos tienen fecha de inicio y fin independientes de la cita.",
+    "⚠ No se indicó si un veterinario tiene horarios de consulta predefinidos.",
+    "⚠ Se asumió que los costos de tratamiento son en formato decimal BigDecimal."
+  ]
+}

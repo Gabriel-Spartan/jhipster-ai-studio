@@ -1,0 +1,74 @@
+{
+  "systemName": "SistemaInventario",
+  "entities": [
+    {
+      "name": "Producto",
+      "fields": [
+        { "name": "codigoBarras", "type": "String", "required": true, "unique": true },
+        { "name": "nombre", "type": "String", "required": true },
+        { "name": "precioUnitario", "type": "BigDecimal", "required": true, "min": 0 }
+      ]
+    },
+    {
+      "name": "Categoria",
+      "fields": [
+        { "name": "nombre", "type": "String", "required": true, "unique": true },
+        { "name": "descripcion", "type": "String", "required": false }
+      ]
+    },
+    {
+      "name": "Proveedor",
+      "fields": [
+        { "name": "razonSocial", "type": "String", "required": true },
+        { "name": "contacto", "type": "String", "required": true },
+        { "name": "telefono", "type": "String", "required": true }
+      ]
+    },
+    {
+      "name": "Inventario",
+      "fields": [
+        { "name": "stockActual", "type": "Integer", "required": true, "min": 0 },
+        { "name": "stockMinimo", "type": "Integer", "required": true, "min": 0 },
+        { "name": "ubicacionPasillo", "type": "String", "required": false }
+      ]
+    },
+    {
+      "name": "Movimiento",
+      "fields": [
+        { "name": "tipo", "type": "String", "required": true },
+        { "name": "cantidad", "type": "Integer", "required": true, "min": 1 },
+        { "name": "fechaHora", "type": "Instant", "required": true }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from": "Categoria",
+      "to": "Producto",
+      "type": "one-to-many",
+      "description": "Una categoría agrupa varios productos"
+    },
+    {
+      "from": "Proveedor",
+      "to": "Producto",
+      "type": "one-to-many",
+      "description": "Un proveedor suministra varios productos"
+    },
+    {
+      "from": "Producto",
+      "to": "Inventario",
+      "type": "one-to-one",
+      "description": "Cada producto tiene un registro de inventario único"
+    },
+    {
+      "from": "Producto",
+      "to": "Movimiento",
+      "type": "one-to-many",
+      "description": "Un producto registra múltiples movimientos de entrada o salida"
+    }
+  ],
+  "observations": [
+    "⚠ No se especificó si el tipo de movimiento de inventario se restringe a un Enum (ENTRADA, SALIDA, AJUSTE); se modeló como String.",
+    "⚠ No se indicó si un proveedor puede compartir un producto con otros proveedores (relación 1:N asumida)."
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "systemName": "Biblioteca",
+  "entities": [
+    {
+      "name": "Usuario",
+      "fields": [
+        { "name": "nombre", "type": "String", "required": true },
+        { "name": "email", "type": "String", "required": true, "unique": true },
+        { "name": "fechaRegistro", "type": "LocalDate", "required": true }
+      ]
+    },
+    {
+      "name": "Autor",
+      "fields": [
+        { "name": "nombreCompleto", "type": "String", "required": true },
+        { "name": "nacionalidad", "type": "String", "required": false }
+      ]
+    },
+    {
+      "name": "Libro",
+      "fields": [
+        { "name": "titulo", "type": "String", "required": true },
+        { "name": "isbn", "type": "String", "required": true, "unique": true },
+        { "name": "ejemplaresDisponibles", "type": "Integer", "required": true, "min": 0 }
+      ]
+    },
+    {
+      "name": "Prestamo",
+      "fields": [
+        { "name": "fechaPrestamo", "type": "LocalDate", "required": true },
+        { "name": "fechaDevolucion", "type": "LocalDate", "required": false },
+        { "name": "devuelto", "type": "Boolean", "required": true }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from": "Autor",
+      "to": "Libro",
+      "type": "one-to-many",
+      "description": "Un autor puede escribir varios libros"
+    },
+    {
+      "from": "Usuario",
+      "to": "Prestamo",
+      "type": "one-to-many",
+      "description": "Un usuario puede tener múltiples préstamos"
+    },
+    {
+      "from": "Prestamo",
+      "to": "Libro",
+      "type": "many-to-one",
+      "description": "Cada préstamo corresponde a un libro específico"
+    }
+  ],
+  "observations": [
+    "⚠ No se especificó si un libro puede tener más de un autor; se asumió relación Autor 1:N Libro.",
+    "⚠ No se indicó si un préstamo puede ser renovado en caso de mora.",
+    "⚠ Se asumió que los ejemplares disponibles se controlan a nivel numérico en la entidad Libro."
+  ]
+}

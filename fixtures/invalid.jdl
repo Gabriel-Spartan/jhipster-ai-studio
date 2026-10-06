@@ -1,0 +1,23 @@
+// CASO DE PRUEBA INVÁLIDO OBLIGATORIO (Demostración de rechazo y corrección)
+// Contiene:
+// 1. Entidad 'Usuario' referenciada en la relación pero NO declarada.
+// 2. Campo con tipo inexistente 'SuperCustomType'.
+// 3. Llave sin cerrar al final.
+
+entity Libro {
+  titulo String required
+  descripcion SuperCustomType
+}
+
+entity Prestamo {
+  fecha LocalDate required
+}
+
+// Error semántico: Usuario no existe en el modelo
+relationship OneToMany {
+  Usuario to Prestamo
+}
+
+// Error de sintaxis: Bloque abierto sin cerrar
+entity EntidadIncompleta {
+  codigo String
