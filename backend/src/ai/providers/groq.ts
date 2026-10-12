@@ -2,7 +2,7 @@ import Groq from 'groq-sdk';
 import { envConfig } from '../../config/env.js';
 import { SystemAnalysis } from '../../types/schema.js';
 import { SYSTEM_ANALYSIS_PROMPT, REPAIR_JDL_PROMPT } from '../prompt.js';
-import { extractAndValidateJson } from './base.js';
+import { extractAndValidateJson, cleanJdlOutput } from './base.js';
 import { AIProvider, AIProviderResponse } from '../types.js';
 
 export class GroqProvider implements AIProvider {
@@ -75,12 +75,7 @@ Por favor corrige el código JDL para que sea válido y no tenga errores. Devuel
       temperature: 0.1,
     });
 
-    let text = (chatCompletion.choices[0]?.message?.content || '').trim();
-    if (text.startsWith('```jdl')) {
-      text = text.replace(/^```jdl\s*/i, '').replace(/```\s*$/, '').trim();
-    } else if (text.startsWith('```')) {
-      text = text.replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
-    }
-    return text;
+    const rawText = chatCompletion.choices[0]?.message?.content || '';
+    return cleanJdlOutput(rawText);
   }
 }

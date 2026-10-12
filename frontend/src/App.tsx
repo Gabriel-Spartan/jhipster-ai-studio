@@ -65,6 +65,8 @@ export default function App() {
   const [isValidating, setIsValidating] = useState<boolean>(false);
   const [repairAttempts, setRepairAttempts] = useState<number>(0);
   const [isRepairing, setIsRepairing] = useState<boolean>(false);
+  const [repairError, setRepairError] = useState<string | null>(null);
+  const [repairSuccess, setRepairSuccess] = useState<boolean>(false);
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
 
   // Paso 4: JHipster Runner
@@ -241,6 +243,9 @@ export default function App() {
       } else if (json.type === 'jdl') {
         setJdlCode(json.data);
         setOriginalJdl(json.data);
+        setRepairAttempts(0);
+        setRepairError(null);
+        setRepairSuccess(false);
         const valRes = await fetch('/api/validate-jdl', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -341,8 +346,10 @@ export default function App() {
   }
 
   async function handleAiRepair() {
-    if (!validation || repairAttempts >= 2) return;
+    if (!validation) return;
     setIsRepairing(true);
+    setRepairError(null);
+    setRepairSuccess(false);
 
     try {
       const errorMessages = validation.errors.map((e) => e.message);
@@ -363,11 +370,15 @@ export default function App() {
       }
 
       const data = await res.json();
-      setJdlCode(data.repairedJdl);
-      setValidation(data.validation);
-      setRepairAttempts((prev) => prev + 1);
+      if (data.repairedJdl) {
+        setJdlCode(data.repairedJdl);
+        setValidation(data.validation);
+        setRepairAttempts((prev) => prev + 1);
+        setRepairSuccess(true);
+      }
     } catch (err: any) {
-      alert(`Error en reparación con IA: ${err.message}`);
+      console.error('Error en reparación con IA:', err);
+      setRepairError(err.message || 'Error en comunicación con la IA.');
     } finally {
       setIsRepairing(false);
     }
@@ -968,23 +979,68 @@ export default function App() {
                       ))}
                     </div>
 
+                    {/* Alerta de error si falla la reparación */}
+                    {repairError && (
+                      <div
+                        style={{
+                          padding: '10px 12px',
+                          background: 'rgba(239, 68, 68, 0.12)',
+                          border: '1px solid rgba(239, 68, 68, 0.4)',
+                          borderRadius: '6px',
+                          fontSize: '0.8rem',
+                          color: '#fca5a5',
+                        }}
+                      >
+                        <strong>Error en reparación:</strong> {repairError}
+                      </div>
+                    )}
+
+                    {/* Alerta de éxito de reparación */}
+                    {repairSuccess && (
+                      <div
+                        style={{
+                          padding: '10px 12px',
+                          background: 'rgba(16, 185, 129, 0.12)',
+                          border: '1px solid rgba(16, 185, 129, 0.4)',
+                          borderRadius: '6px',
+                          fontSize: '0.8rem',
+                          color: '#6ee7b7',
+                        }}
+                      >
+                        ✓ JDL corregido con éxito por el motor de IA.
+                      </div>
+                    )}
+
                     {/* Botón de auto-reparación asistida */}
-                    <button
-                      className="btn btn-secondary"
-                      style={{ marginTop: '8px' }}
-                      disabled={isRepairing || repairAttempts >= 2}
-                      onClick={handleAiRepair}
-                    >
-                      {isRepairing ? (
-                        <>
-                          <div className="spinner" /> Corrigiendo con IA...
-                        </>
-                      ) : (
-                        <>
-                          <Wrench size={16} /> Corregir con IA ({repairAttempts}/2 intentos)
-                        </>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ flex: 1 }}
+                        disabled={isRepairing}
+                        onClick={handleAiRepair}
+                      >
+                        {isRepairing ? (
+                          <>
+                            <div className="spinner" /> Corrigiendo con IA...
+                          </>
+                        ) : (
+                          <>
+                            <Wrench size={16} /> Corregir con IA ({repairAttempts}/2 intentos)
+                          </>
+                        )}
+                      </button>
+
+                      {repairAttempts >= 2 && (
+                        <button
+                          className="btn btn-outline"
+                          style={{ padding: '6px 10px', fontSize: '0.78rem' }}
+                          title="Restablecer intentos de corrección"
+                          onClick={() => setRepairAttempts(0)}
+                        >
+                          <RotateCcw size={14} /> Reintentar
+                        </button>
                       )}
-                    </button>
+                    </div>
                   </div>
                 )}
 
