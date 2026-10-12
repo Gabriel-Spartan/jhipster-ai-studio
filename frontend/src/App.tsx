@@ -45,10 +45,13 @@ export default function App() {
   const [prompt, setPrompt] = useState<string>(DEMO_PROMPTS.library);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [transferredMessage, setTransferredMessage] = useState<string | null>(null);
 
-  // Paso 2: Análisis Estructurado
+  // Paso 2: Análisis Estructurado & Ambigüedades
   const [analysisResult, setAnalysisResult] = useState<AIAnalysisResponse | null>(null);
   const [isGeneratingJdl, setIsGeneratingJdl] = useState<boolean>(false);
+  const [selectedObservations, setSelectedObservations] = useState<Record<number, boolean>>({});
+  const [observationResolutions, setObservationResolutions] = useState<Record<number, string>>({});
 
   // Paso 3: Editor y Validación JDL
   const [jdlCode, setJdlCode] = useState<string>('');
@@ -105,8 +108,8 @@ export default function App() {
   }
 
   // --- PASO 1: Analizar Requisitos ---
-  async function handleAnalyze() {
-    if (!prompt.trim()) return;
+  async function handleAnalyzeWithCustomPrompt(promptToUse: string) {
+    if (!promptToUse.trim()) return;
     setIsAnalyzing(true);
     setAnalysisError(null);
 
@@ -114,7 +117,7 @@ export default function App() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, provider: selectedProvider }),
+        body: JSON.stringify({ prompt: promptToUse, provider: selectedProvider }),
       });
 
       if (!res.ok) {
@@ -124,6 +127,9 @@ export default function App() {
 
       const data: AIAnalysisResponse = await res.json();
       setAnalysisResult(data);
+      // Reiniciar selecciones de ambigüedad para el nuevo análisis
+      setSelectedObservations({});
+      setObservationResolutions({});
       if (data.analysis.systemName) {
         setProjectName(data.analysis.systemName.toLowerCase().replace(/[^a-z0-9_]/g, '_'));
       }
@@ -132,6 +138,76 @@ export default function App() {
       setAnalysisError(err.message);
     } finally {
       setIsAnalyzing(false);
+    }
+  }
+
+  async function handleAnalyze() {
+    await handleAnalyzeWithCustomPrompt(prompt);
+  }
+
+  // --- Manejo de Selección y Resolución de Ambigüedades ---
+  function toggleObservation(idx: number) {
+    setSelectedObservations((prev) => ({
+      ...prev,
+      [idx]: !prev[idx],
+    }));
+  }
+
+  function handleResolutionChange(idx: number, val: string) {
+    setObservationResolutions((prev) => ({
+      ...prev,
+      [idx]: val,
+    }));
+  }
+
+  function handleSelectAllObservations() {
+    if (!analysisResult?.analysis?.observations) return;
+    const all: Record<number, boolean> = {};
+    analysisResult.analysis.observations.forEach((_, idx) => {
+      all[idx] = true;
+    });
+    setSelectedObservations(all);
+  }
+
+  function handleDeselectAllObservations() {
+    setSelectedObservations({});
+  }
+
+  function buildUpdatedPromptWithObservations(): string {
+    if (!analysisResult?.analysis?.observations) return prompt;
+
+    const selectedIndices = Object.keys(selectedObservations)
+      .map(Number)
+      .filter((idx) => selectedObservations[idx]);
+
+    if (selectedIndices.length === 0) return prompt;
+
+    const additions = selectedIndices.map((idx) => {
+      const rawObs = analysisResult.analysis.observations[idx];
+      const cleanedObs = rawObs.replace(/^⚠\s*/, '').trim();
+      const resolution = observationResolutions[idx]?.trim();
+      if (resolution) {
+        return `• [Ambigüedad resuelta]: ${cleanedObs}\n  -> Especificación: ${resolution}`;
+      } else {
+        return `• [Ambigüedad a solventar]: ${cleanedObs} (Por favor considerar y definir explícitamente en el modelo)`;
+      }
+    });
+
+    return `${prompt.trim()}\n\n--- Aclaraciones y Solución de Ambigüedades ---\n${additions.join('\n')}`;
+  }
+
+  async function handleApplyObservationsToRequirements(reAnalyzeDirectly: boolean = false) {
+    const updatedPrompt = buildUpdatedPromptWithObservations();
+    setPrompt(updatedPrompt);
+
+    const count = Object.values(selectedObservations).filter(Boolean).length;
+    if (reAnalyzeDirectly) {
+      await handleAnalyzeWithCustomPrompt(updatedPrompt);
+    } else {
+      setTransferredMessage(
+        `Se han incorporado ${count} ambigüedad(es) al texto de requisitos. Puedes revisarlas o ajustarlas antes de re-analizar.`
+      );
+      setCurrentStep(1);
     }
   }
 
@@ -414,6 +490,36 @@ export default function App() {
             </div>
           </div>
 
+          {/* Notificación de ambigüedades transferidas */}
+          {transferredMessage && (
+            <div
+              style={{
+                marginBottom: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 16px',
+                background: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                borderRadius: '8px',
+                color: '#6ee7b7',
+                fontSize: '0.88rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <CheckCircle2 size={18} color="#34d399" />
+                <span>{transferredMessage}</span>
+              </div>
+              <button
+                className="btn btn-outline"
+                style={{ padding: '4px 10px', fontSize: '0.78rem', height: 'auto' }}
+                onClick={() => setTransferredMessage(null)}
+              >
+                Cerrar aviso
+              </button>
+            </div>
+          )}
+
           {/* Textarea de requerimiento */}
           <textarea
             className="textarea"
@@ -573,26 +679,126 @@ export default function App() {
 
           {/* Panel de Observaciones y Ambigüedades (Regla Clave del Documento) */}
           <section className="card" style={{ borderColor: 'rgba(245, 158, 11, 0.3)' }}>
-            <h3 className="card-title" style={{ color: '#fbbf24' }}>
-              <AlertTriangle size={20} color="#fbbf24" /> Observaciones y Ambigüedades Detectadas
-            </h3>
-            <p className="card-description">
-              La IA no inventa decisiones de negocio en silencio. Si el requisito es vago, se registra formalmente aquí:
-            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <h3 className="card-title" style={{ color: '#fbbf24' }}>
+                  <AlertTriangle size={20} color="#fbbf24" /> Observaciones y Ambigüedades Detectadas
+                </h3>
+                <p className="card-description" style={{ marginBottom: '10px' }}>
+                  La IA no inventa decisiones de negocio en silencio. Selecciona las ambigüedades que deseas resolver para transferirlas a la descripción o re-analizar:
+                </p>
+              </div>
+
+              {analysisResult.analysis.observations && analysisResult.analysis.observations.length > 0 && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    className="btn btn-outline"
+                    style={{ padding: '5px 10px', fontSize: '0.78rem' }}
+                    onClick={handleSelectAllObservations}
+                  >
+                    Seleccionar todas
+                  </button>
+                  <button
+                    className="btn btn-outline"
+                    style={{ padding: '5px 10px', fontSize: '0.78rem' }}
+                    onClick={handleDeselectAllObservations}
+                  >
+                    Deseleccionar
+                  </button>
+                </div>
+              )}
+            </div>
 
             <div className="observations-container">
               {analysisResult.analysis.observations && analysisResult.analysis.observations.length > 0 ? (
-                analysisResult.analysis.observations.map((obs, idx) => (
-                  <div key={idx} className="observation-box">
-                    <span>{obs}</span>
-                  </div>
-                ))
+                analysisResult.analysis.observations.map((obs, idx) => {
+                  const isSelected = Boolean(selectedObservations[idx]);
+                  return (
+                    <div
+                      key={idx}
+                      className={`observation-box ${isSelected ? 'selected' : ''}`}
+                    >
+                      <div className="observation-header">
+                        <input
+                          type="checkbox"
+                          className="observation-checkbox"
+                          id={`obs-check-${idx}`}
+                          checked={isSelected}
+                          onChange={() => toggleObservation(idx)}
+                        />
+                        <label
+                          htmlFor={`obs-check-${idx}`}
+                          className="observation-text"
+                          style={{ cursor: 'pointer' }}
+                        >
+                          {obs}
+                        </label>
+                      </div>
+
+                      {/* Input opcional para especificar cómo solventar la ambigüedad */}
+                      {isSelected && (
+                        <div className="observation-resolution-box">
+                          <label style={{ fontSize: '0.78rem', color: '#fde68a', fontWeight: 600 }}>
+                            ¿Cómo deseas solventar esta ambigüedad? (opcional):
+                          </label>
+                          <input
+                            type="text"
+                            className="observation-input"
+                            placeholder="Ej: Sí, permitir que un libro tenga varios autores / Sí, un cliente puede pagar en cuotas..."
+                            value={observationResolutions[idx] || ''}
+                            onChange={(e) => handleResolutionChange(idx, e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               ) : (
                 <div style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>
                   No se registraron ambigüedades críticas en la descripción.
                 </div>
               )}
             </div>
+
+            {/* Barra de acción cuando hay ambigüedades seleccionadas */}
+            {Object.values(selectedObservations).filter(Boolean).length > 0 && (
+              <div className="observation-actions-bar">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="badge badge-warning" style={{ fontSize: '0.82rem' }}>
+                    {Object.values(selectedObservations).filter(Boolean).length} seleccionada(s)
+                  </span>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                    Listo para incorporar a los requisitos
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.85rem' }}
+                    onClick={() => handleApplyObservationsToRequirements(false)}
+                  >
+                    Transferir a Requisitos y Editar ➔
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: '0.85rem' }}
+                    disabled={isAnalyzing}
+                    onClick={() => handleApplyObservationsToRequirements(true)}
+                  >
+                    {isAnalyzing ? (
+                      <>
+                        <div className="spinner" /> Re-analizando...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={14} /> Re-analizar con estas soluciones ⚡
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
 
           {/* Entidades Detectadas */}
