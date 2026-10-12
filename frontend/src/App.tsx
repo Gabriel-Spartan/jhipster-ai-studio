@@ -19,7 +19,12 @@ import {
   BookOpen,
   Stethoscope,
   Package,
+  FolderArchive,
+  Save,
 } from 'lucide-react';
+import { DatabaseDiagram } from './components/DatabaseDiagram';
+import { ProjectManagerModal } from './components/ProjectManagerModal';
+import type { SavedProject } from './components/ProjectManagerModal';
 import type {
   SystemAnalysis,
   AIAnalysisResponse,
@@ -67,6 +72,9 @@ export default function App() {
   const [currentJob, setCurrentJob] = useState<GenerationJob | null>(null);
   const [isLaunchingJHipster, setIsLaunchingJHipster] = useState<boolean>(false);
   const terminalEndRef = useRef<HTMLDivElement>(null);
+
+  // Modal de almacenamiento de múltiples proyectos
+  const [isProjectsModalOpen, setIsProjectsModalOpen] = useState<boolean>(false);
 
   // Cargar estado inicial de proveedores
   useEffect(() => {
@@ -249,6 +257,30 @@ export default function App() {
     }
   }
 
+  // Cargar Proyecto Guardado desde el Almacenamiento
+  function handleLoadSavedProject(saved: SavedProject) {
+    if (saved.prompt) setPrompt(saved.prompt);
+    if (saved.provider) setSelectedProvider(saved.provider);
+    if (saved.name) setProjectName(saved.name);
+
+    if (saved.analysis) {
+      setAnalysisResult({
+        analysis: saved.analysis,
+        provider: saved.provider || 'Proyecto Guardado',
+        model: 'Almacenamiento Local',
+        durationMs: 0,
+      });
+    }
+
+    if (saved.jdl) {
+      setJdlCode(saved.jdl);
+      setOriginalJdl(saved.jdl);
+      handleValidateJdl(saved.jdl);
+    }
+
+    setCurrentStep(saved.currentStep || (saved.jdl ? 3 : saved.analysis ? 2 : 1));
+  }
+
   // Mini-retos para cambiar el requerimiento en vivo
   function appendMiniChallenge(challengeText: string) {
     setPrompt((prev) => `${prev.trim()}\n\n[Requisito adicional]: ${challengeText}`);
@@ -401,10 +433,29 @@ export default function App() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-outline"
+            style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+            onClick={() => setIsProjectsModalOpen(true)}
+            title="Ver y cargar proyectos guardados"
+          >
+            <FolderArchive size={14} color="#818cf8" /> Mis Proyectos
+          </button>
+
+          <button
+            className="btn btn-outline"
+            style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+            onClick={() => setIsProjectsModalOpen(true)}
+            title="Guardar el estado del proyecto actual"
+          >
+            <Save size={14} color="#34d399" /> Guardar
+          </button>
+
           <span className="badge badge-info">
             <Sparkles size={12} /> JDL Generator v1.0
           </span>
+
           <button
             className="btn btn-outline"
             style={{ padding: '6px 12px', fontSize: '0.8rem' }}
@@ -829,29 +880,8 @@ export default function App() {
             </div>
           </section>
 
-          {/* Relaciones Detectadas */}
-          <section className="card">
-            <h3 className="card-title">
-              <Layers size={20} color="#818cf8" /> Relaciones del Modelo
-            </h3>
-            <div className="relationships-list">
-              {analysisResult.analysis.relationships && analysisResult.analysis.relationships.length > 0 ? (
-                analysisResult.analysis.relationships.map((rel, idx) => (
-                  <div key={idx} className="relationship-item">
-                    <div className="rel-diagram">
-                      {rel.from} {rel.type === 'one-to-many' ? '1 ──── N' : rel.type === 'many-to-one' ? 'N ──── 1' : rel.type === 'many-to-many' ? 'N ──── N' : '1 ──── 1'} {rel.to}
-                    </div>
-                    <div className="rel-desc">{rel.description}</div>
-                    <span className="badge badge-info">{rel.type}</span>
-                  </div>
-                ))
-              ) : (
-                <div style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>
-                  No se definieron relaciones explícitas.
-                </div>
-              )}
-            </div>
-          </section>
+          {/* Diagrama Interactivo de Base de Datos (Mermaid ERD con Pan, Zoom y Fullscreen) */}
+          <DatabaseDiagram analysis={analysisResult.analysis} />
         </div>
       )}
 
@@ -1124,6 +1154,18 @@ export default function App() {
           )}
         </section>
       )}
+
+      {/* MODAL DE ALMACENAMIENTO DE MÚLTIPLES PROYECTOS */}
+      <ProjectManagerModal
+        isOpen={isProjectsModalOpen}
+        onClose={() => setIsProjectsModalOpen(false)}
+        currentPrompt={prompt}
+        currentAnalysis={analysisResult?.analysis || null}
+        currentJdl={jdlCode}
+        currentProvider={selectedProvider}
+        currentStep={currentStep}
+        onLoadProject={handleLoadSavedProject}
+      />
     </div>
   );
 }

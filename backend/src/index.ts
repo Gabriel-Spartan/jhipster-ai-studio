@@ -8,10 +8,12 @@ import { generateJdlFromAnalysis } from './parser/jsonToJdl.js';
 import { validateJdlContent } from './validator/jdlValidator.js';
 import { JHipsterRunner } from './jhipster/runner.js';
 import { SystemAnalysisSchema } from './types/schema.js';
+import { ProjectStore } from './storage/projectStore.js';
 
 const app = express();
 const router = new AIProviderRouter();
 const runner = new JHipsterRunner();
+const projectStore = new ProjectStore();
 
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
@@ -162,6 +164,50 @@ app.get('/api/jhipster/download/:projectName', (req, res) => {
       return res.download(jdlPath, `${cleanName}.jdl`);
     }
     res.status(404).json({ error: 'Archivo JDL no encontrado.' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 8. Almacenamiento y gestión de proyectos
+app.get('/api/projects', (req, res) => {
+  try {
+    const projects = projectStore.getAll();
+    res.json(projects);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/projects/:id', (req, res) => {
+  try {
+    const project = projectStore.getById(req.params.id);
+    if (!project) {
+      return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
+    res.json(project);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/projects', (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ error: 'El nombre del proyecto es requerido.' });
+    }
+    const saved = projectStore.save(req.body);
+    res.json(saved);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/projects/:id', (req, res) => {
+  try {
+    const success = projectStore.delete(req.params.id);
+    res.json({ success });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
