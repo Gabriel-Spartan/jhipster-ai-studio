@@ -303,6 +303,8 @@ export default function App() {
         body: JSON.stringify({
           analysis: analysisResult.analysis,
           options: {
+            includeApplicationConfig: true,
+            baseName: analysisResult.analysis.systemName,
             includeDefaultOptions: true,
           },
         }),

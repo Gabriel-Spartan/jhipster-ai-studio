@@ -43,8 +43,30 @@ export class JHipsterRunner {
       fs.mkdirSync(projectDir, { recursive: true });
     }
 
+    // Asegurar que el JDL contenga la configuración de aplicación requerida por JHipster v8/v9
+    let finalJdl = jdlContent.trim();
+    if (!finalJdl.includes('application {')) {
+      const appBlock = `application {
+  config {
+    baseName ${cleanName}
+    applicationType monolith
+    packageName com.mycompany.${cleanName}
+    authenticationType jwt
+    prodDatabaseType postgresql
+    devDatabaseType h2Disk
+    buildTool maven
+    clientFramework react
+    testFrameworks []
+  }
+  entities *
+}
+
+`;
+      finalJdl = `${appBlock}${finalJdl}`;
+    }
+
     const jdlPath = path.join(projectDir, `${cleanName}.jdl`);
-    fs.writeFileSync(jdlPath, jdlContent, 'utf-8');
+    fs.writeFileSync(jdlPath, finalJdl, 'utf-8');
 
     return { jdlPath, projectDir };
   }
@@ -83,7 +105,7 @@ export class JHipsterRunner {
     jdlPath: string,
     skipInstall: boolean
   ) {
-    const args = ['jhipster', 'jdl', jdlPath, '--no-insight'];
+    const args = ['-y', 'generator-jhipster', 'jdl', jdlPath, '--no-insight', '--force'];
     if (skipInstall) {
       args.push('--skip-install');
       args.push('--skip-git');
@@ -97,13 +119,13 @@ export class JHipsterRunner {
       shell: false, // Evita shell injection
     });
 
-    // Timeout de seguridad: 3 minutos máximo
+    // Timeout de seguridad: 5 minutos máximo
     const timeout = setTimeout(() => {
       child.kill('SIGTERM');
       job.status = 'failed';
-      job.error = 'Proceso cancelado por timeout (límite de 3 minutos excedido).';
+      job.error = 'Proceso cancelado por timeout (límite de 5 minutos excedido).';
       job.logs.push(`[JHipster Runner] ERROR: ${job.error}`);
-    }, 180000);
+    }, 300000);
 
     child.stdout.on('data', (data) => {
       const text = data.toString();
