@@ -22,12 +22,31 @@ app.use(express.json({ limit: '10mb' }));
 app.get('/api/status', async (req, res) => {
   try {
     const providers = await router.getAvailableProviders();
+    const ollamaItem = providers.find((p) => p.name === 'ollama');
+    const ollamaModels = ollamaItem?.models || [];
+
     res.json({
       status: 'ok',
       defaultProvider: envConfig.defaultProvider,
       providers,
+      ollamaModels,
       maxRepairAttempts: envConfig.maxRepairAttempts,
     });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint dedicado para consultar modelos de Ollama en tiempo real (Linux/Windows)
+app.get('/api/ollama/models', async (req, res) => {
+  try {
+    const ollamaProvider = router.getProvider('ollama') as any;
+    if (!ollamaProvider) {
+      return res.status(404).json({ error: 'Proveedor Ollama no encontrado.' });
+    }
+    const isAvailable = await ollamaProvider.isAvailable();
+    const models = isAvailable ? await ollamaProvider.getAvailableModels() : [];
+    res.json({ isAvailable, models });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -70,14 +89,14 @@ app.get('/api/fixtures/:id', (req, res) => {
 
 // 3. Análisis en lenguaje natural -> Estructura JSON
 app.post('/api/analyze', async (req, res) => {
-  const { prompt, provider } = req.body;
+  const { prompt, provider, model } = req.body;
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
     return res.status(400).json({ error: 'La descripción del sistema no puede estar vacía.' });
   }
 
   try {
-    console.log(`[API /api/analyze] Solicitando análisis con motor: '${provider || 'auto'}'...`);
-    const result = await router.analyze(provider || 'auto', prompt);
+    console.log(`[API /api/analyze] Solicitando análisis con motor: '${provider || 'auto'}' ${model ? `(modelo: ${model})` : ''}...`);
+    const result = await router.analyze(provider || 'auto', prompt, model);
     res.json(result);
   } catch (error: any) {
     console.error(`[API /api/analyze] Error:`, error.message);
@@ -111,7 +130,7 @@ app.post('/api/validate-jdl', (req, res) => {
 
 // 6. Reparación asistida con IA
 app.post('/api/repair-jdl', async (req, res) => {
-  const { currentJdl, errors, analysis, provider } = req.body;
+  const { currentJdl, errors, analysis, provider, model } = req.body;
   if (!currentJdl || !errors || !Array.isArray(errors)) {
     return res.status(400).json({ error: 'JDL y lista de errores requeridos.' });
   }
@@ -121,7 +140,8 @@ app.post('/api/repair-jdl', async (req, res) => {
       provider || 'auto',
       currentJdl,
       errors,
-      analysis || { systemName: 'Sistema', entities: [], relationships: [], observations: [] }
+      analysis || { systemName: 'Sistema', entities: [], relationships: [], observations: [] },
+      model
     );
     const validation = validateJdlContent(repairedJdl);
     res.json({ repairedJdl, validation });

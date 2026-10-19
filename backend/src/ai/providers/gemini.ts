@@ -20,14 +20,15 @@ export class GeminiProvider implements AIProvider {
     return Boolean(this.client && envConfig.gemini.apiKey.trim().length > 0);
   }
 
-  async analyzeRequirements(userPrompt: string): Promise<AIProviderResponse> {
+  async analyzeRequirements(userPrompt: string, modelOverride?: string): Promise<AIProviderResponse> {
     if (!this.client) {
       throw new Error('Proveedor Gemini no está configurado (falta GEMINI_API_KEY).');
     }
 
+    const targetModel = modelOverride || this.model;
     const startTime = Date.now();
     const model = this.client.getGenerativeModel({
-      model: this.model,
+      model: targetModel,
       generationConfig: {
         responseMimeType: 'application/json',
         temperature: 0.2,
@@ -44,19 +45,25 @@ export class GeminiProvider implements AIProvider {
     return {
       analysis,
       provider: 'Gemini',
-      model: this.model,
+      model: targetModel,
       durationMs,
       rawResponse,
     };
   }
 
-  async repairJdl(currentJdl: string, validationErrors: string[], originalAnalysis: SystemAnalysis): Promise<string> {
+  async repairJdl(
+    currentJdl: string,
+    validationErrors: string[],
+    originalAnalysis: SystemAnalysis,
+    modelOverride?: string
+  ): Promise<string> {
     if (!this.client) {
       throw new Error('Proveedor Gemini no está configurado.');
     }
 
+    const targetModel = modelOverride || this.model;
     const model = this.client.getGenerativeModel({
-      model: this.model,
+      model: targetModel,
       generationConfig: {
         temperature: 0.1,
       },

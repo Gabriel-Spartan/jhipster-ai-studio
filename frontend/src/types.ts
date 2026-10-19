@@ -56,6 +56,7 @@ export interface ProviderInfo {
   name: string;
   model: string;
   isAvailable: boolean;
+  models?: string[];
 }
 
 export interface GenerationJob {

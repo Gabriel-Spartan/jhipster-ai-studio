@@ -17,24 +17,29 @@ export class AIProviderRouter {
     return this.providers.get(name.toLowerCase());
   }
 
-  async getAvailableProviders(): Promise<{ name: string; model: string; isAvailable: boolean }[]> {
-    const list: { name: string; model: string; isAvailable: boolean }[] = [];
+  async getAvailableProviders(): Promise<{ name: string; model: string; isAvailable: boolean; models?: string[] }[]> {
+    const list: { name: string; model: string; isAvailable: boolean; models?: string[] }[] = [];
     for (const [key, provider] of this.providers.entries()) {
       const isAvailable = await provider.isAvailable();
+      let models: string[] | undefined;
+      if (key === 'ollama' && isAvailable && 'getAvailableModels' in provider) {
+        models = await (provider as any).getAvailableModels();
+      }
       list.push({
         name: key,
         model: provider.model,
         isAvailable,
+        ...(models ? { models } : {}),
       });
     }
     return list;
   }
 
-  async analyze(mode: string, userPrompt: string): Promise<AIProviderResponse> {
+  async analyze(mode: string, userPrompt: string, modelOverride?: string): Promise<AIProviderResponse> {
     const requestedMode = (mode || 'auto').toLowerCase();
 
     if (requestedMode === 'auto') {
-      return this.analyzeWithAutoStrategy(userPrompt);
+      return this.analyzeWithAutoStrategy(userPrompt, modelOverride);
     }
 
     const provider = this.providers.get(requestedMode);
@@ -47,10 +52,10 @@ export class AIProviderRouter {
       throw new Error(`El motor de IA '${mode}' no está disponible o sus credenciales no han sido configuradas.`);
     }
 
-    return provider.analyzeRequirements(userPrompt);
+    return provider.analyzeRequirements(userPrompt, modelOverride);
   }
 
-  private async analyzeWithAutoStrategy(userPrompt: string): Promise<AIProviderResponse> {
+  private async analyzeWithAutoStrategy(userPrompt: string, modelOverride?: string): Promise<AIProviderResponse> {
     // Orden de prioridad preferida: Gemini -> Groq -> Ollama
     const candidates = ['gemini', 'groq', 'ollama'];
     const availableProviders: AIProvider[] = [];
@@ -70,9 +75,10 @@ export class AIProviderRouter {
 
     for (const provider of availableProviders) {
       try {
-        console.log(`[AI Auto-Router] Intentando análisis con ${provider.name} (${provider.model})...`);
-        const result = await provider.analyzeRequirements(userPrompt);
-        console.log(`[AI Auto-Router] Análisis completado con éxito por ${result.provider} en ${result.durationMs}ms`);
+        const targetModel = (provider.name === 'ollama' && modelOverride) ? modelOverride : provider.model;
+        console.log(`[AI Auto-Router] Intentando análisis con ${provider.name} (${targetModel})...`);
+        const result = await provider.analyzeRequirements(userPrompt, modelOverride);
+        console.log(`[AI Auto-Router] Análisis completado con éxito por ${result.provider} (${result.model}) en ${result.durationMs}ms`);
         return result;
       } catch (err: any) {
         console.warn(`[AI Auto-Router] Falló ${provider.name}: ${err.message}. Intentando fallback...`);
@@ -83,7 +89,13 @@ export class AIProviderRouter {
     throw new Error(`Todos los proveedores configurados fallaron: ${errors.join(' | ')}`);
   }
 
-  async repairJdl(mode: string, currentJdl: string, validationErrors: string[], originalAnalysis: SystemAnalysis): Promise<string> {
+  async repairJdl(
+    mode: string,
+    currentJdl: string,
+    validationErrors: string[],
+    originalAnalysis: SystemAnalysis,
+    modelOverride?: string
+  ): Promise<string> {
     const requestedMode = (mode || 'auto').toLowerCase();
 
     const candidates = requestedMode === 'auto'
@@ -106,7 +118,7 @@ export class AIProviderRouter {
     for (const provider of availableProviders) {
       try {
         console.log(`[AI Auto-Router] Intentando reparación con ${provider.name}...`);
-        const repaired = await provider.repairJdl(currentJdl, validationErrors, originalAnalysis);
+        const repaired = await provider.repairJdl(currentJdl, validationErrors, originalAnalysis, modelOverride);
         if (repaired && repaired.trim().length > 0) {
           console.log(`[AI Auto-Router] JDL reparado con éxito por ${provider.name}`);
           return repaired;

@@ -20,18 +20,19 @@ export class GroqProvider implements AIProvider {
     return Boolean(this.client && envConfig.groq.apiKey.trim().length > 0);
   }
 
-  async analyzeRequirements(userPrompt: string): Promise<AIProviderResponse> {
+  async analyzeRequirements(userPrompt: string, modelOverride?: string): Promise<AIProviderResponse> {
     if (!this.client) {
       throw new Error('Proveedor Groq no está configurado (falta GROQ_API_KEY).');
     }
 
+    const targetModel = modelOverride || this.model;
     const startTime = Date.now();
     const chatCompletion = await this.client.chat.completions.create({
       messages: [
         { role: 'system', content: SYSTEM_ANALYSIS_PROMPT },
         { role: 'user', content: `Requisitos del sistema a modelar:\n"""\n${userPrompt}\n"""` },
       ],
-      model: this.model,
+      model: targetModel,
       response_format: { type: 'json_object' },
       temperature: 0.2,
     });
@@ -43,17 +44,23 @@ export class GroqProvider implements AIProvider {
     return {
       analysis,
       provider: 'Groq',
-      model: this.model,
+      model: targetModel,
       durationMs,
       rawResponse,
     };
   }
 
-  async repairJdl(currentJdl: string, validationErrors: string[], originalAnalysis: SystemAnalysis): Promise<string> {
+  async repairJdl(
+    currentJdl: string,
+    validationErrors: string[],
+    originalAnalysis: SystemAnalysis,
+    modelOverride?: string
+  ): Promise<string> {
     if (!this.client) {
       throw new Error('Proveedor Groq no está configurado.');
     }
 
+    const targetModel = modelOverride || this.model;
     const prompt = `
 Código JDL actual:
 \`\`\`jdl
@@ -71,7 +78,7 @@ Por favor corrige el código JDL para que sea válido y no tenga errores. Devuel
         { role: 'system', content: REPAIR_JDL_PROMPT },
         { role: 'user', content: prompt },
       ],
-      model: this.model,
+      model: targetModel,
       temperature: 0.1,
     });
 

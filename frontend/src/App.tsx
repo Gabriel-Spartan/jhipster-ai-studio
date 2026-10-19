@@ -45,6 +45,9 @@ export default function App() {
   // Estado general y configuración
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string>('auto');
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [selectedOllamaModel, setSelectedOllamaModel] = useState<string>('');
+  const [isRefreshingOllama, setIsRefreshingOllama] = useState<boolean>(false);
 
   // Paso 1: Requerimientos
   const [prompt, setPrompt] = useState<string>(DEMO_PROMPTS.library);
@@ -110,10 +113,40 @@ export default function App() {
       const res = await fetch('/api/status');
       if (res.ok) {
         const data = await res.json();
-        setProviders(data.providers || []);
+        const provs = data.providers || [];
+        setProviders(provs);
+        const modelsList = data.ollamaModels || [];
+        if (Array.isArray(modelsList)) {
+          setOllamaModels(modelsList);
+          if (modelsList.length > 0) {
+            setSelectedOllamaModel((prev) => (prev && modelsList.includes(prev) ? prev : modelsList[0]));
+          }
+        }
       }
     } catch {
       console.warn('Backend aún no responde en /api/status');
+    }
+  }
+
+  async function refreshOllamaModels() {
+    setIsRefreshingOllama(true);
+    try {
+      const res = await fetch('/api/ollama/models');
+      if (res.ok) {
+        const data = await res.json();
+        const models = data.models || [];
+        setOllamaModels(models);
+        if (models.length > 0) {
+          setSelectedOllamaModel((prev) => (prev && models.includes(prev) ? prev : models[0]));
+        }
+        setProviders((prev) =>
+          prev.map((p) => (p.name === 'ollama' ? { ...p, isAvailable: data.isAvailable, models } : p))
+        );
+      }
+    } catch (err) {
+      console.error('Error al consultar modelos de Ollama:', err);
+    } finally {
+      setIsRefreshingOllama(false);
     }
   }
 
@@ -127,7 +160,11 @@ export default function App() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: promptToUse, provider: selectedProvider }),
+        body: JSON.stringify({
+          prompt: promptToUse,
+          provider: selectedProvider,
+          model: selectedProvider === 'ollama' ? selectedOllamaModel : undefined,
+        }),
       });
 
       if (!res.ok) {
@@ -363,6 +400,7 @@ export default function App() {
           errors: errorMessages,
           analysis: analysisResult?.analysis,
           provider: selectedProvider,
+          model: selectedProvider === 'ollama' ? selectedOllamaModel : undefined,
         }),
       });
 
@@ -534,25 +572,142 @@ export default function App() {
               </p>
             </div>
 
-            {/* Selector de Motor de IA */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                Motor de IA:
-              </label>
-              <select
-                className="select"
-                value={selectedProvider}
-                onChange={(e) => setSelectedProvider(e.target.value)}
-              >
-                <option value="auto">Automático (Prioriza activo / Fallback)</option>
-                {providers.map((p) => (
-                  <option key={p.name} value={p.name}>
-                    {p.name.toUpperCase()} {p.isAvailable ? `(${p.model})` : '— [No disponible]'}
-                  </option>
-                ))}
-              </select>
+            {/* Selector de Motor de IA & Modelo Local */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                  Motor de IA:
+                </label>
+                <select
+                  className="select"
+                  value={selectedProvider}
+                  onChange={(e) => setSelectedProvider(e.target.value)}
+                >
+                  <option value="auto">Automático (Prioriza activo / Fallback)</option>
+                  {providers.map((p) => {
+                    const isOllama = p.name === 'ollama';
+                    let label = `${p.name.toUpperCase()} `;
+                    if (isOllama) {
+                      label += p.isAvailable
+                        ? ollamaModels.length > 0
+                          ? `(${ollamaModels.length} modelo${ollamaModels.length > 1 ? 's' : ''} local${ollamaModels.length > 1 ? 'es' : ''})`
+                          : '(Ollama activo - sin modelos)'
+                        : '— [No disponible]';
+                    } else {
+                      label += p.isAvailable ? `(${p.model})` : '— [No disponible]';
+                    }
+                    return (
+                      <option key={p.name} value={p.name}>
+                        {label}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* Selector dinámico de modelo si se escoge Ollama */}
+              {selectedProvider === 'ollama' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', animation: 'fadeIn 0.2s ease-in-out' }}>
+                  <label style={{ fontSize: '0.85rem', color: '#a78bfa', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Cpu size={14} /> Modelo Ollama:
+                  </label>
+                  {ollamaModels.length > 0 ? (
+                    <select
+                      className="select"
+                      style={{
+                        borderColor: 'rgba(167, 139, 250, 0.4)',
+                        background: 'rgba(30, 27, 75, 0.4)',
+                        color: '#e0e7ff',
+                        fontWeight: 500,
+                      }}
+                      value={selectedOllamaModel}
+                      onChange={(e) => setSelectedOllamaModel(e.target.value)}
+                    >
+                      {ollamaModels.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span
+                      style={{
+                        fontSize: '0.8rem',
+                        color: '#f87171',
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                      }}
+                    >
+                      Sin modelos detectados
+                    </span>
+                  )}
+                  <button
+                    className="btn btn-outline"
+                    title="Actualizar modelos de Ollama detectados en el sistema (Linux/Windows)"
+                    style={{ padding: '6px 8px', height: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    onClick={refreshOllamaModels}
+                    disabled={isRefreshingOllama}
+                  >
+                    <RefreshCw
+                      size={13}
+                      style={{
+                        animation: isRefreshingOllama ? 'spin 1s linear infinite' : 'none',
+                      }}
+                    />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Avisos contextuales para Ollama */}
+          {selectedProvider === 'ollama' && ollamaModels.length === 0 && providers.find((p) => p.name === 'ollama')?.isAvailable && (
+            <div
+              style={{
+                marginBottom: '16px',
+                padding: '10px 14px',
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                borderRadius: '8px',
+                color: '#fde68a',
+                fontSize: '0.84rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+              }}
+            >
+              <AlertTriangle size={18} color="#fbbf24" style={{ flexShrink: 0 }} />
+              <div>
+                Ollama está activo en <code>http://localhost:11434</code> pero aún no tiene modelos descargados.
+                Descarga uno en tu terminal ejecutando: <strong><code>ollama run qwen2.5:7b</code></strong> o <strong><code>ollama pull llama3</code></strong>, y luego pulsa el botón <strong>🔄</strong>.
+              </div>
+            </div>
+          )}
+
+          {selectedProvider === 'ollama' && !providers.find((p) => p.name === 'ollama')?.isAvailable && (
+            <div
+              style={{
+                marginBottom: '16px',
+                padding: '10px 14px',
+                background: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '8px',
+                color: '#fca5a5',
+                fontSize: '0.84rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+              }}
+            >
+              <XCircle size={18} color="#f87171" style={{ flexShrink: 0 }} />
+              <div>
+                No se detectó el servicio de Ollama en <code>http://localhost:11434</code>.
+                Inicia Ollama en tu sistema operativo (Linux o Windows) y pulsa el botón <strong>🔄</strong> para recargar.
+              </div>
+            </div>
+          )}
 
           {/* Notificación de ambigüedades transferidas */}
           {transferredMessage && (

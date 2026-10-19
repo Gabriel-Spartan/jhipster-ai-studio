@@ -12,6 +12,6 @@ export interface AIProvider {
   readonly name: string;
   readonly model: string;
   isAvailable(): Promise<boolean>;
-  analyzeRequirements(prompt: string): Promise<AIProviderResponse>;
-  repairJdl(currentJdl: string, validationErrors: string[], originalAnalysis: SystemAnalysis): Promise<string>;
+  analyzeRequirements(prompt: string, modelOverride?: string): Promise<AIProviderResponse>;
+  repairJdl(currentJdl: string, validationErrors: string[], originalAnalysis: SystemAnalysis, modelOverride?: string): Promise<string>;
 }
