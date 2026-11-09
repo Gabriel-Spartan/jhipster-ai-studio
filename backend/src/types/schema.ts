@@ -71,12 +71,25 @@ export const RelationshipSchema = z.object({
 
 export type Relationship = z.infer<typeof RelationshipSchema>;
 
+export const ObservationItemSchema = z.object({
+  text: z.string().min(1),
+  suggestions: z.array(z.string().min(1)).max(3).optional().default([]),
+});
+
+export const ObservationSchema = z.union([
+  z.string(),
+  ObservationItemSchema,
+]);
+
+export type ObservationItem = z.infer<typeof ObservationItemSchema>;
+export type Observation = z.infer<typeof ObservationSchema>;
+
 export const SystemAnalysisSchema = z.object({
   systemName: z.string().min(1),
   entities: z.array(EntitySchema).min(1),
   enums: z.array(EnumSchema).optional().default([]),
   relationships: z.array(RelationshipSchema).default([]),
-  observations: z.array(z.string()).default([]),
+  observations: z.array(ObservationSchema).default([]),
 });
 
 export type SystemAnalysis = z.infer<typeof SystemAnalysisSchema>;

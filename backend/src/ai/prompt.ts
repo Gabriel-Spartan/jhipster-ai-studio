@@ -18,9 +18,14 @@ Debes respetar rigurosamente estas reglas:
    - "from": nombre de la entidad origen (en PascalCase).
    - "to": nombre de la entidad destino (en PascalCase).
    - "description": explicación humana legible (ej: "Un autor puede escribir varios libros").
-6. REGLA FUNDAMENTAL DE TRANSPARENCIA Y AMBIGÜEDADES:
-   - Si un requerimiento es vago, ambiguo o no especifica una multiplicidad clave (ej. si un libro tiene un único autor o varios, si se permiten pagos parciales, si hay cancelaciones), DEBES agregar una observación en el array "observations".
-   - Formato de las observaciones: comenzar con "⚠ " (ej: "⚠ No se especificó si un libro puede tener más de un autor.").
+6. REGLA FUNDAMENTAL DE TRANSPARENCIA, AMBIGÜEDADES Y SUGERENCIAS DE CORRECCIÓN:
+   - Si un requerimiento es vago, ambiguo, omitió entidades relacionadas o no especifica una multiplicidad o regla clave (ej. si un libro tiene un único autor o varios, si se requieren entidades adicionales como Sucursal/Pagos, cómo manejar precios o claves), DEBES agregar un elemento en el array "observations".
+   - Cada elemento de "observations" debe ser un objeto con:
+     * "text": Descripción clara de la ambigüedad o supuesto asumido, comenzando con "⚠ " (ej: "⚠ Se asumió un modelo orientado a un único complejo de cine (sin entidad Sucursal).").
+     * "suggestions": Un array con ENTRE 1 Y MÁXIMO 3 opciones concretas de solución sugeridas por ti para resolver esa ambigüedad en el modelo.
+       - NO siempre tienen que ser 3 opciones: si para un caso particular solo hay 1 solución directa recomendada, ofrece solo 1 opción; si existen 2 o hasta 3 alternativas de modelado viables, ofrece 2 o 3 opciones (máximo 3).
+       - NO agregues la opción "Otra" en el array (la interfaz ya añade automáticamente la opción "Otra" para que el usuario escriba su propia solución).
+       - NO incluyas prefijos como "a)", "b)", "c)" dentro del texto de las sugerencias.
    - Nunca tomes decisiones de negocio complejas en silencio.
 
 FORMATO DEL JSON REQUERIDO:
@@ -55,7 +60,12 @@ FORMATO DEL JSON REQUERIDO:
     }
   ],
   "observations": [
-    "⚠ Observación sobre ambigüedad o decisión asumida"
+    {
+      "text": "⚠ Observación sobre ambigüedad o decisión asumida",
+      "suggestions": [
+        "Opción de resolución concreta sugerida por la IA (entre 1 y máximo 3 opciones según el caso)"
+      ]
+    }
   ]
 }
 `;

@@ -12,6 +12,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import type { SystemAnalysis } from '../types';
+import { CustomDialog, useCustomDialog } from './CustomDialog';
 
 export interface SavedProject {
   id: string;
@@ -52,6 +53,7 @@ export function ProjectManagerModal({
   const [projectName, setProjectName] = useState<string>('');
   const [projectDescription, setProjectDescription] = useState<string>('');
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
+  const { dialogConfig, closeDialog, showAlert, showConfirm } = useCustomDialog();
 
   useEffect(() => {
     if (isOpen) {
@@ -79,7 +81,11 @@ export function ProjectManagerModal({
 
   async function handleSaveCurrentProject() {
     if (!projectName.trim()) {
-      alert('Por favor ingresa un nombre para el proyecto.');
+      showAlert({
+        title: 'Nombre requerido',
+        message: 'Por favor ingresa un nombre para guardar el proyecto.',
+        variant: 'warning',
+      });
       return;
     }
 
@@ -104,20 +110,36 @@ export function ProjectManagerModal({
         await loadProjectsList();
       }
     } catch (err) {
-      alert('Error guardando el proyecto.');
+      showAlert({
+        title: 'Error al guardar',
+        message: 'Ocurrió un error al intentar guardar el proyecto.',
+        variant: 'danger',
+      });
     }
   }
 
-  async function handleDeleteProject(id: string) {
-    if (!confirm('¿Estás seguro de eliminar este proyecto del almacenamiento?')) return;
-    try {
-      const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setProjects((prev) => prev.filter((p) => p.id !== id));
-      }
-    } catch (err) {
-      alert('Error eliminando el proyecto.');
-    }
+  function handleDeleteProject(id: string) {
+    showConfirm({
+      title: '¿Eliminar proyecto?',
+      message: '¿Estás seguro de eliminar este proyecto del almacenamiento local? Esta acción no se puede deshacer.',
+      variant: 'danger',
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+          if (res.ok) {
+            setProjects((prev) => prev.filter((p) => p.id !== id));
+          }
+        } catch (err) {
+          showAlert({
+            title: 'Error al eliminar',
+            message: 'Ocurrió un error eliminando el proyecto.',
+            variant: 'danger',
+          });
+        }
+      },
+    });
   }
 
   // Exportar todos los proyectos a un archivo JSON local
@@ -150,10 +172,18 @@ export function ProjectManagerModal({
             });
           }
           await loadProjectsList();
-          alert('¡Proyectos importados con éxito!');
+          showAlert({
+            title: 'Importación exitosa',
+            message: '¡Los proyectos han sido importados con éxito!',
+            variant: 'success',
+          });
         }
       } catch (err) {
-        alert('El archivo no tiene un formato JSON válido.');
+        showAlert({
+          title: 'Archivo inválido',
+          message: 'El archivo seleccionado no tiene un formato JSON válido.',
+          variant: 'danger',
+        });
       }
     };
     reader.readAsText(file);
@@ -401,6 +431,8 @@ export function ProjectManagerModal({
           )}
         </div>
       </div>
+
+      <CustomDialog config={dialogConfig} onClose={closeDialog} />
     </div>
   );
 }

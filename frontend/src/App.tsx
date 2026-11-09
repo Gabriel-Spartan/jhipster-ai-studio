@@ -25,12 +25,72 @@ import {
 import { DatabaseDiagram } from './components/DatabaseDiagram';
 import { ProjectManagerModal } from './components/ProjectManagerModal';
 import type { SavedProject } from './components/ProjectManagerModal';
+import { CustomDialog, useCustomDialog } from './components/CustomDialog';
 import type {
+  Observation,
   AIAnalysisResponse,
   ValidationResult,
   ProviderInfo,
   GenerationJob,
 } from './types';
+
+function generateFallbackSuggestions(rawText: string): string[] {
+  const clean = rawText.replace(/^⚠\s*/, '').trim();
+  const lower = clean.toLowerCase();
+
+  const missingEntityMatch = clean.match(/sin entidad\s+([A-Za-zÁÉÍÓÚáéíóú0-9_]+)/i);
+  if (missingEntityMatch && missingEntityMatch[1]) {
+    const ent = missingEntityMatch[1];
+    return [
+      `Incluir la entidad ${ent} en el modelo y relacionarla con las entidades correspondientes`,
+      `Mantener el diseño actual sin la entidad ${ent}`,
+    ];
+  }
+
+  if (lower.includes('no se incluyeron entidades de') || lower.includes('no haber sido explícitamente solicitadas')) {
+    return [
+      'Agregar las entidades mencionadas con sus atributos principales y relaciones',
+      'Mantener únicamente las entidades actuales dentro del alcance del modelo',
+    ];
+  }
+
+  if (lower.includes('clave compuesta') || lower.includes('pk autogenerada') || lower.includes('unicidad de la combinación')) {
+    return [
+      'Mantener clave primaria (PK) autogenerada en JDL y delegar la validación combinada a nivel de servicio',
+    ];
+  }
+
+  if (lower.includes('precio') || lower.includes('tarifa') || lower.includes('costo')) {
+    return [
+      'Mantener la estructura de precios propuesta actualmente en las entidades',
+      'Centralizar el manejo de precios y tarifas en una entidad o catálogo dedicado',
+    ];
+  }
+
+  return [
+    'Confirmar y mantener el supuesto aplicado por la IA en el modelo',
+    'Modificar el modelo para cubrir explícitamente este caso mediante nuevas reglas o relaciones',
+  ];
+}
+
+function getObservationData(obs: Observation): { text: string; suggestions: string[] } {
+  if (typeof obs === 'string') {
+    return {
+      text: obs,
+      suggestions: generateFallbackSuggestions(obs),
+    };
+  }
+
+  const cleanedSuggestions = (obs.suggestions || [])
+    .slice(0, 3)
+    .map((s) => s.replace(/^[a-dA-D][).:-]\s*/, '').trim())
+    .filter(Boolean);
+
+  return {
+    text: obs.text,
+    suggestions: cleanedSuggestions.length > 0 ? cleanedSuggestions : generateFallbackSuggestions(obs.text),
+  };
+}
 
 export default function App() {
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -52,7 +112,11 @@ export default function App() {
   const [analysisResult, setAnalysisResult] = useState<AIAnalysisResponse | null>(null);
   const [isGeneratingJdl, setIsGeneratingJdl] = useState<boolean>(false);
   const [selectedObservations, setSelectedObservations] = useState<Record<number, boolean>>({});
+  const [selectedResolutionOption, setSelectedResolutionOption] = useState<Record<number, number | 'custom' | null>>({});
   const [observationResolutions, setObservationResolutions] = useState<Record<number, string>>({});
+
+  // Alertas y confirmaciones personalizadas
+  const { dialogConfig, closeDialog, showAlert, showConfirm } = useCustomDialog();
 
   // Paso 3: Editor y Validación JDL
   const [jdlCode, setJdlCode] = useState<string>('');
@@ -169,6 +233,7 @@ export default function App() {
       setAnalysisResult(data);
       // Reiniciar selecciones de ambigüedad para el nuevo análisis
       setSelectedObservations({});
+      setSelectedResolutionOption({});
       setObservationResolutions({});
       if (data.analysis.systemName) {
         setProjectName(data.analysis.systemName.toLowerCase().replace(/[^a-z0-9_]/g, '_'));
@@ -185,11 +250,19 @@ export default function App() {
     await handleAnalyzeWithCustomPrompt(prompt);
   }
 
-  // --- Manejo de Selección y Resolución de Ambigüedades ---
+  // --- Manejo de Selección y Resolución de Ambigüedades (Opción Única por Ambigüedad) ---
   function toggleObservation(idx: number) {
     setSelectedObservations((prev) => ({
       ...prev,
       [idx]: !prev[idx],
+    }));
+  }
+
+  function selectSingleResolutionOption(obsIdx: number, option: number | 'custom') {
+    setSelectedObservations((prev) => ({ ...prev, [obsIdx]: true }));
+    setSelectedResolutionOption((prev) => ({
+      ...prev,
+      [obsIdx]: prev[obsIdx] === option ? null : option,
     }));
   }
 
@@ -211,6 +284,7 @@ export default function App() {
 
   function handleDeselectAllObservations() {
     setSelectedObservations({});
+    setSelectedResolutionOption({});
   }
 
   function buildUpdatedPromptWithObservations(): string {
@@ -223,11 +297,21 @@ export default function App() {
     if (selectedIndices.length === 0) return prompt;
 
     const additions = selectedIndices.map((idx) => {
-      const rawObs = analysisResult.analysis.observations[idx];
+      const obsItem = analysisResult.analysis.observations[idx];
+      const { text: rawObs, suggestions } = getObservationData(obsItem);
       const cleanedObs = rawObs.replace(/^⚠\s*/, '').trim();
-      const resolution = observationResolutions[idx]?.trim();
-      if (resolution) {
-        return `• [Ambigüedad resuelta]: ${cleanedObs}\n  -> Especificación: ${resolution}`;
+
+      const chosenOption = selectedResolutionOption[idx];
+      let resolutionText = '';
+
+      if (typeof chosenOption === 'number' && suggestions[chosenOption]) {
+        resolutionText = suggestions[chosenOption];
+      } else if (chosenOption === 'custom') {
+        resolutionText = observationResolutions[idx]?.trim() || '';
+      }
+
+      if (resolutionText) {
+        return `• [Ambigüedad resuelta]: ${cleanedObs}\n  -> Especificación: ${resolutionText}`;
       } else {
         return `• [Ambigüedad a solventar]: ${cleanedObs} (Por favor considerar y definir explícitamente en el modelo)`;
       }
@@ -251,17 +335,31 @@ export default function App() {
     }
   }
 
-  // Iniciar un Proyecto Nuevo (Limpiar Área de Trabajo)
-  function handleNewProject() {
-    if (prompt.trim() || analysisResult || jdlCode) {
-      if (!confirm('¿Deseas iniciar un nuevo proyecto limpio? Se vaciará el área de trabajo actual. (Recuerda guardarlo antes si deseas conservarlo)')) {
-        return;
-      }
+  // Confirmación personalizada para vaciar el texto de requisitos (Paso 1)
+  function handleClearPrompt() {
+    if (!prompt.trim()) {
+      setPrompt('');
+      return;
     }
+    showConfirm({
+      title: '¿Eliminar descripción?',
+      message: '¿Estás seguro de que deseas eliminar el texto escrito en la descripción de los requisitos?',
+      variant: 'danger',
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+      onConfirm: () => {
+        setPrompt('');
+      },
+    });
+  }
+
+  // Iniciar un Proyecto Nuevo (Limpiar Área de Trabajo)
+  function resetWorkspaceState() {
     setPrompt('');
     setProjectName('');
     setAnalysisResult(null);
     setSelectedObservations({});
+    setSelectedResolutionOption({});
     setObservationResolutions({});
     setJdlCode('');
     setOriginalJdl('');
@@ -271,6 +369,23 @@ export default function App() {
     setTransferredMessage(null);
     setAnalysisError(null);
     setCurrentStep(1);
+  }
+
+  function handleNewProject() {
+    if (prompt.trim() || analysisResult || jdlCode) {
+      showConfirm({
+        title: '¿Iniciar nuevo proyecto limpio?',
+        message: 'Se vaciará el área de trabajo actual. Recuerda guardar tu proyecto antes si deseas conservar los avances.',
+        variant: 'warning',
+        confirmText: 'Sí, limpiar área',
+        cancelText: 'Cancelar',
+        onConfirm: () => {
+          resetWorkspaceState();
+        },
+      });
+      return;
+    }
+    resetWorkspaceState();
   }
 
   // Cargar Proyecto Guardado desde el Almacenamiento (Permite proyectos a medias o completos)
@@ -301,6 +416,7 @@ export default function App() {
     }
 
     setSelectedObservations({});
+    setSelectedResolutionOption({});
     setObservationResolutions({});
     setCurrentJob(null);
     setRepairAttempts(0);
@@ -345,7 +461,11 @@ export default function App() {
       setRepairAttempts(0);
       setCurrentStep(3);
     } catch (err: any) {
-      alert(`Error al generar JDL: ${err.message}`);
+      showAlert({
+        title: 'Error al generar JDL',
+        message: err.message || 'No se pudo generar el código JDL.',
+        variant: 'danger',
+      });
     } finally {
       setIsGeneratingJdl(false);
     }
@@ -364,7 +484,11 @@ export default function App() {
       const data = await res.json();
       setValidation(data);
     } catch (err: any) {
-      alert(`Error de validación: ${err.message}`);
+      showAlert({
+        title: 'Error de validación',
+        message: err.message || 'Ocurrió un fallo al validar el archivo JDL.',
+        variant: 'danger',
+      });
     } finally {
       setIsValidating(false);
     }
@@ -448,7 +572,11 @@ export default function App() {
       const job: GenerationJob = await res.json();
       setCurrentJob(job);
     } catch (err: any) {
-      alert(`Error al iniciar JHipster: ${err.message}`);
+      showAlert({
+        title: 'Error al iniciar JHipster',
+        message: err.message || 'No se pudo iniciar el proceso de JHipster.',
+        variant: 'danger',
+      });
     } finally {
       setIsLaunchingJHipster(false);
     }
@@ -758,7 +886,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Textarea de requerimiento limpio con botón para vaciar */}
+          {/* Textarea de requerimiento limpio con botón de basurero para vaciar */}
           <div style={{ position: 'relative' }}>
             <textarea
               className="textarea"
@@ -766,7 +894,7 @@ export default function App() {
               placeholder="Describe aquí el sistema que necesitas desarrollar en lenguaje natural (entidades, atributos requeridos/únicos y relaciones)..."
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              style={{ minHeight: '180px', paddingRight: prompt ? '85px' : '16px' }}
+              style={{ minHeight: '180px', paddingRight: prompt ? '52px' : '16px' }}
             />
             {prompt && (
               <button
@@ -775,17 +903,16 @@ export default function App() {
                   position: 'absolute',
                   top: '12px',
                   right: '12px',
-                  padding: '4px 10px',
-                  fontSize: '0.74rem',
+                  padding: '7px',
                   background: 'rgba(15, 23, 42, 0.85)',
                   borderColor: 'rgba(239, 68, 68, 0.4)',
                   color: '#fca5a5',
                   height: 'auto',
                 }}
-                onClick={() => setPrompt('')}
-                title="Vaciar texto del requerimiento"
+                onClick={handleClearPrompt}
+                title="Eliminar texto del requerimiento"
               >
-                <Trash2 size={12} color="#f87171" /> Limpiar
+                <Trash2 size={15} color="#f87171" />
               </button>
             )}
           </div>
@@ -905,6 +1032,11 @@ export default function App() {
               {analysisResult.analysis.observations && analysisResult.analysis.observations.length > 0 ? (
                 analysisResult.analysis.observations.map((obs, idx) => {
                   const isSelected = Boolean(selectedObservations[idx]);
+                  const { text: obsText, suggestions } = getObservationData(obs);
+                  const chosenOption = selectedResolutionOption[idx] ?? null;
+                  const isCustomSelected = chosenOption === 'custom';
+                  const otherLetter = String.fromCharCode(97 + suggestions.length);
+
                   return (
                     <div
                       key={idx}
@@ -923,23 +1055,114 @@ export default function App() {
                           className="observation-text"
                           style={{ cursor: 'pointer' }}
                         >
-                          {obs}
+                          {obsText}
                         </label>
                       </div>
 
-                      {/* Input opcional para especificar cómo solventar la ambigüedad */}
+                      {/* Opciones sugeridas por la IA (a, b, ...) + opción Otra (Selección Única) */}
                       {isSelected && (
                         <div className="observation-resolution-box">
                           <label style={{ fontSize: '0.78rem', color: '#fde68a', fontWeight: 600 }}>
-                            ¿Cómo deseas solventar esta ambigüedad? (opcional):
+                            ¿Cómo deseas solventar esta ambigüedad? (selecciona una única opción):
                           </label>
-                          <input
-                            type="text"
-                            className="observation-input"
-                            placeholder="Escribe aquí tu aclaración o decisión..."
-                            value={observationResolutions[idx] || ''}
-                            onChange={(e) => handleResolutionChange(idx, e.target.value)}
-                          />
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+                            {suggestions.map((suggestion, sIdx) => {
+                              const letter = String.fromCharCode(97 + sIdx);
+                              const isOptionChecked = chosenOption === sIdx;
+                              const optionId = `obs-${idx}-opt-${sIdx}`;
+                              return (
+                                <label
+                                  key={sIdx}
+                                  htmlFor={optionId}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    gap: '10px',
+                                    padding: '8px 12px',
+                                    borderRadius: '6px',
+                                    background: isOptionChecked ? 'rgba(99, 102, 241, 0.18)' : 'rgba(13, 19, 31, 0.65)',
+                                    border: isOptionChecked
+                                      ? '1px solid rgba(129, 140, 248, 0.55)'
+                                      : '1px solid rgba(245, 158, 11, 0.2)',
+                                    color: isOptionChecked ? '#e0e7ff' : '#fef08a',
+                                    fontSize: '0.83rem',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    id={optionId}
+                                    checked={isOptionChecked}
+                                    onChange={() => selectSingleResolutionOption(idx, sIdx)}
+                                    style={{
+                                      marginTop: '3px',
+                                      accentColor: '#6366f1',
+                                      cursor: 'pointer',
+                                      width: '15px',
+                                      height: '15px',
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                  <span style={{ lineHeight: 1.45 }}>
+                                    <strong style={{ color: '#a5b4fc', marginRight: '4px' }}>{letter})</strong>
+                                    {suggestion}
+                                  </span>
+                                </label>
+                              );
+                            })}
+
+                            {/* Opción final: Otra (para que el usuario escriba su propia solución) */}
+                            <label
+                              htmlFor={`obs-${idx}-opt-custom`}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                padding: '8px 12px',
+                                borderRadius: '6px',
+                                background: isCustomSelected ? 'rgba(245, 158, 11, 0.18)' : 'rgba(13, 19, 31, 0.65)',
+                                border: isCustomSelected
+                                  ? '1px solid rgba(251, 191, 36, 0.55)'
+                                  : '1px solid rgba(245, 158, 11, 0.2)',
+                                color: isCustomSelected ? '#fef9c3' : '#fde68a',
+                                fontSize: '0.83rem',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                id={`obs-${idx}-opt-custom`}
+                                checked={isCustomSelected}
+                                onChange={() => selectSingleResolutionOption(idx, 'custom')}
+                                style={{
+                                  accentColor: '#f59e0b',
+                                  cursor: 'pointer',
+                                  width: '15px',
+                                  height: '15px',
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <span>
+                                <strong style={{ color: '#fbbf24', marginRight: '4px' }}>{otherLetter})</strong>
+                                Otra (especificar manualmente)
+                              </span>
+                            </label>
+                          </div>
+
+                          {isCustomSelected && (
+                            <input
+                              type="text"
+                              className="observation-input"
+                              style={{ marginTop: '6px' }}
+                              placeholder="Escribe aquí cómo deseas solventar esta ambigüedad..."
+                              value={observationResolutions[idx] || ''}
+                              onChange={(e) => handleResolutionChange(idx, e.target.value)}
+                              autoFocus
+                            />
+                          )}
                         </div>
                       )}
                     </div>
@@ -1358,6 +1581,9 @@ export default function App() {
         currentStep={currentStep}
         onLoadProject={handleLoadSavedProject}
       />
+
+      {/* MODAL DE ALERTAS Y CONFIRMACIONES PERSONALIZADAS */}
+      <CustomDialog config={dialogConfig} onClose={closeDialog} />
     </div>
   );
 }

@@ -23,11 +23,18 @@ export interface Relationship {
   description: string;
 }
 
+export interface ObservationItem {
+  text: string;
+  suggestions?: string[];
+}
+
+export type Observation = string | ObservationItem;
+
 export interface SystemAnalysis {
   systemName: string;
   entities: Entity[];
   relationships: Relationship[];
-  observations: string[];
+  observations: Observation[];
 }
 
 export interface AIAnalysisResponse {
