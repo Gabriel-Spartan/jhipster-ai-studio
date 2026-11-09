@@ -17,27 +17,20 @@ import {
   RefreshCw,
   FolderDown,
   BookOpen,
-  Stethoscope,
-  Package,
   FolderArchive,
   Save,
+  FilePlus,
+  Trash2,
 } from 'lucide-react';
 import { DatabaseDiagram } from './components/DatabaseDiagram';
 import { ProjectManagerModal } from './components/ProjectManagerModal';
 import type { SavedProject } from './components/ProjectManagerModal';
 import type {
-  SystemAnalysis,
   AIAnalysisResponse,
   ValidationResult,
   ProviderInfo,
   GenerationJob,
 } from './types';
-
-const DEMO_PROMPTS = {
-  library: `Crear un sistema de biblioteca que permita gestionar usuarios, libros, autores y préstamos. Un autor puede escribir varios libros, un usuario puede realizar varios préstamos y cada préstamo corresponde a un libro.`,
-  veterinary: `Crear un sistema para una clínica veterinaria que gestione clientes, mascotas, veterinarios, citas y tratamientos. Un cliente puede tener varias mascotas, y una cita médica puede incluir uno o varios tratamientos.`,
-  inventory: `Crear un sistema de inventario que gestione productos, categorías, proveedores, inventario y movimientos. Cada producto pertenece a una categoría y a un proveedor, y registra movimientos de entrada y salida con su fecha y cantidad.`,
-};
 
 export default function App() {
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -49,8 +42,8 @@ export default function App() {
   const [selectedOllamaModel, setSelectedOllamaModel] = useState<string>('');
   const [isRefreshingOllama, setIsRefreshingOllama] = useState<boolean>(false);
 
-  // Paso 1: Requerimientos
-  const [prompt, setPrompt] = useState<string>(DEMO_PROMPTS.library);
+  // Paso 1: Requerimientos (Área de trabajo limpia por defecto)
+  const [prompt, setPrompt] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [transferredMessage, setTransferredMessage] = useState<string | null>(null);
@@ -73,7 +66,7 @@ export default function App() {
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
 
   // Paso 4: JHipster Runner
-  const [projectName, setProjectName] = useState<string>('biblioteca_app');
+  const [projectName, setProjectName] = useState<string>('');
   const [currentJob, setCurrentJob] = useState<GenerationJob | null>(null);
   const [isLaunchingJHipster, setIsLaunchingJHipster] = useState<boolean>(false);
   const terminalEndRef = useRef<HTMLDivElement>(null);
@@ -258,52 +251,33 @@ export default function App() {
     }
   }
 
-  // Cargar Fixture de Contingencia Offline
-  async function handleLoadFixture(fixtureId: string) {
-    try {
-      setIsAnalyzing(true);
-      setAnalysisError(null);
-      const res = await fetch(`/api/fixtures/${fixtureId}`);
-      if (!res.ok) throw new Error('Fixture no encontrado');
-      const json = await res.json();
-
-      if (json.type === 'analysis') {
-        const mockResponse: AIAnalysisResponse = {
-          analysis: json.data as SystemAnalysis,
-          provider: 'Fixture (Modo Contingencia)',
-          model: 'Local Backup v1',
-          durationMs: 45,
-        };
-        setAnalysisResult(mockResponse);
-        setProjectName(mockResponse.analysis.systemName.toLowerCase());
-        setCurrentStep(2);
-      } else if (json.type === 'jdl') {
-        setJdlCode(json.data);
-        setOriginalJdl(json.data);
-        setRepairAttempts(0);
-        setRepairError(null);
-        setRepairSuccess(false);
-        const valRes = await fetch('/api/validate-jdl', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jdl: json.data }),
-        });
-        const vData = await valRes.json();
-        setValidation(vData);
-        setCurrentStep(3);
+  // Iniciar un Proyecto Nuevo (Limpiar Área de Trabajo)
+  function handleNewProject() {
+    if (prompt.trim() || analysisResult || jdlCode) {
+      if (!confirm('¿Deseas iniciar un nuevo proyecto limpio? Se vaciará el área de trabajo actual. (Recuerda guardarlo antes si deseas conservarlo)')) {
+        return;
       }
-    } catch (err: any) {
-      setAnalysisError(`Error al cargar fixture: ${err.message}`);
-    } finally {
-      setIsAnalyzing(false);
     }
+    setPrompt('');
+    setProjectName('');
+    setAnalysisResult(null);
+    setSelectedObservations({});
+    setObservationResolutions({});
+    setJdlCode('');
+    setOriginalJdl('');
+    setValidation(null);
+    setRepairAttempts(0);
+    setCurrentJob(null);
+    setTransferredMessage(null);
+    setAnalysisError(null);
+    setCurrentStep(1);
   }
 
-  // Cargar Proyecto Guardado desde el Almacenamiento
+  // Cargar Proyecto Guardado desde el Almacenamiento (Permite proyectos a medias o completos)
   function handleLoadSavedProject(saved: SavedProject) {
-    if (saved.prompt) setPrompt(saved.prompt);
+    setPrompt(saved.prompt || '');
     if (saved.provider) setSelectedProvider(saved.provider);
-    if (saved.name) setProjectName(saved.name);
+    setProjectName(saved.name || '');
 
     if (saved.analysis) {
       setAnalysisResult({
@@ -312,20 +286,32 @@ export default function App() {
         model: 'Almacenamiento Local',
         durationMs: 0,
       });
+    } else {
+      setAnalysisResult(null);
     }
 
     if (saved.jdl) {
       setJdlCode(saved.jdl);
       setOriginalJdl(saved.jdl);
       handleValidateJdl(saved.jdl);
+    } else {
+      setJdlCode('');
+      setOriginalJdl('');
+      setValidation(null);
     }
 
-    setCurrentStep(saved.currentStep || (saved.jdl ? 3 : saved.analysis ? 2 : 1));
-  }
+    setSelectedObservations({});
+    setObservationResolutions({});
+    setCurrentJob(null);
+    setRepairAttempts(0);
+    setAnalysisError(null);
+    setTransferredMessage(null);
 
-  // Mini-retos para cambiar el requerimiento en vivo
-  function appendMiniChallenge(challengeText: string) {
-    setPrompt((prev) => `${prev.trim()}\n\n[Requisito adicional]: ${challengeText}`);
+    // Si tiene un paso guardado (1, 2, 3 o 4), ir a ese; sino calcular según el avance
+    const targetStep = saved.currentStep && saved.currentStep >= 1 && saved.currentStep <= 4
+      ? saved.currentStep
+      : (saved.jdl ? 3 : saved.analysis ? 2 : 1);
+    setCurrentStep(targetStep);
   }
 
   // --- PASO 2: Generar JDL desde JSON ---
@@ -487,9 +473,18 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <button
             className="btn btn-outline"
+            style={{ padding: '6px 12px', fontSize: '0.8rem', borderColor: '#38bdf8', color: '#e0f2fe' }}
+            onClick={handleNewProject}
+            title="Limpiar el área de trabajo e iniciar un nuevo proyecto en blanco"
+          >
+            <FilePlus size={14} color="#38bdf8" /> + Nuevo Proyecto
+          </button>
+
+          <button
+            className="btn btn-outline"
             style={{ padding: '6px 12px', fontSize: '0.8rem' }}
             onClick={() => setIsProjectsModalOpen(true)}
-            title="Ver y cargar proyectos guardados"
+            title="Ver, seleccionar o continuar proyectos guardados (a medias o completos)"
           >
             <FolderArchive size={14} color="#818cf8" /> Mis Proyectos
           </button>
@@ -498,26 +493,33 @@ export default function App() {
             className="btn btn-outline"
             style={{ padding: '6px 12px', fontSize: '0.8rem' }}
             onClick={() => setIsProjectsModalOpen(true)}
-            title="Guardar el estado del proyecto actual"
+            title="Guardar el estado y avance del proyecto actual"
           >
             <Save size={14} color="#34d399" /> Guardar
           </button>
 
-          <span className="badge badge-info">
-            <Sparkles size={12} /> JDL Generator v1.0
-          </span>
+          {projectName && (
+            <span
+              className="badge badge-info"
+              style={{
+                background: 'rgba(56, 189, 248, 0.1)',
+                borderColor: 'rgba(56, 189, 248, 0.3)',
+                color: '#38bdf8',
+                fontSize: '0.78rem',
+              }}
+              title="Proyecto activo en el área de trabajo"
+            >
+              Proyecto: <strong>{projectName}</strong>
+            </span>
+          )}
 
           <button
             className="btn btn-outline"
             style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-            onClick={() => {
-              if (confirm('¿Deseas reiniciar el flujo desde el principio?')) {
-                setCurrentStep(1);
-                setCurrentJob(null);
-              }
-            }}
+            onClick={handleNewProject}
+            title="Limpiar todo e iniciar desde cero"
           >
-            <RotateCcw size={14} /> Reiniciar
+            <RotateCcw size={14} /> Limpiar Área
           </button>
         </div>
       </header>
@@ -739,59 +741,53 @@ export default function App() {
             </div>
           )}
 
-          {/* Textarea de requerimiento */}
-          <textarea
-            className="textarea"
-            placeholder="Ejemplo: Deseo un sistema para gestionar una biblioteca con libros, autores, usuarios y préstamos..."
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-          />
+          {/* Nombre del proyecto */}
+          <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '420px' }}>
+              <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                Nombre del Proyecto:
+              </label>
+              <input
+                type="text"
+                className="select"
+                placeholder="Ej: MiSistema (opcional)"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                style={{ cursor: 'text', height: '36px', padding: '6px 10px', fontSize: '0.85rem' }}
+              />
+            </div>
+          </div>
 
-          {/* Ejemplos rápidos predefinidos */}
-          <div style={{ marginTop: '16px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-              Ejemplos rápidos:
-            </span>
-            <button
-              className="btn btn-outline"
-              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-              onClick={() => setPrompt(DEMO_PROMPTS.library)}
-            >
-              <BookOpen size={14} /> Biblioteca
-            </button>
-            <button
-              className="btn btn-outline"
-              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-              onClick={() => setPrompt(DEMO_PROMPTS.veterinary)}
-            >
-              <Stethoscope size={14} /> Clínica Veterinaria
-            </button>
-            <button
-              className="btn btn-outline"
-              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-              onClick={() => setPrompt(DEMO_PROMPTS.inventory)}
-            >
-              <Package size={14} /> Inventario
-            </button>
-
-            {/* Mini-retos para dinámica en clase */}
-            <span style={{ fontSize: '0.82rem', color: '#a78bfa', fontWeight: 600, marginLeft: '12px' }}>
-              Mini-retos:
-            </span>
-            <button
-              className="btn btn-outline"
-              style={{ padding: '6px 10px', fontSize: '0.78rem', borderColor: '#4338ca' }}
-              onClick={() => appendMiniChallenge('Ahora un libro puede tener varios autores y cada autor varias nacionalidades.')}
-            >
-              + Varios autores
-            </button>
-            <button
-              className="btn btn-outline"
-              style={{ padding: '6px 10px', fontSize: '0.78rem', borderColor: '#4338ca' }}
-              onClick={() => appendMiniChallenge('Una mascota puede tener un historial de tratamientos con fecha de inicio y fin.')}
-            >
-              + Historial tratamientos
-            </button>
+          {/* Textarea de requerimiento limpio con botón para vaciar */}
+          <div style={{ position: 'relative' }}>
+            <textarea
+              className="textarea"
+              rows={9}
+              placeholder="Describe aquí el sistema que necesitas desarrollar en lenguaje natural (entidades, atributos requeridos/únicos y relaciones)..."
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              style={{ minHeight: '180px', paddingRight: prompt ? '85px' : '16px' }}
+            />
+            {prompt && (
+              <button
+                className="btn btn-outline"
+                style={{
+                  position: 'absolute',
+                  top: '12px',
+                  right: '12px',
+                  padding: '4px 10px',
+                  fontSize: '0.74rem',
+                  background: 'rgba(15, 23, 42, 0.85)',
+                  borderColor: 'rgba(239, 68, 68, 0.4)',
+                  color: '#fca5a5',
+                  height: 'auto',
+                }}
+                onClick={() => setPrompt('')}
+                title="Vaciar texto del requerimiento"
+              >
+                <Trash2 size={12} color="#f87171" /> Limpiar
+              </button>
+            )}
           </div>
 
           {/* Alertas de error si falla la IA */}
@@ -801,46 +797,23 @@ export default function App() {
               <div>
                 <strong style={{ color: '#f87171' }}>Error al conectar con la IA:</strong> {analysisError}
                 <div style={{ marginTop: '6px', fontSize: '0.82rem' }}>
-                  Puedes usar el <strong>Modo Contingencia</strong> abajo para cargar datos de respaldo sin depender de la conexión.
+                  Verifica tu conexión o las credenciales del proveedor de IA seleccionado.
                 </div>
               </div>
             </div>
           )}
 
           {/* Botones de acción principales */}
-          <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                className="btn btn-outline"
-                style={{ fontSize: '0.82rem' }}
-                onClick={() => handleLoadFixture('library')}
-              >
-                Cargar Fixture Biblioteca
-              </button>
-              <button
-                className="btn btn-outline"
-                style={{ fontSize: '0.82rem' }}
-                onClick={() => handleLoadFixture('veterinary')}
-              >
-                Cargar Fixture Veterinaria
-              </button>
-              <button
-                className="btn btn-outline"
-                style={{ fontSize: '0.82rem' }}
-                onClick={() => handleLoadFixture('inventory')}
-              >
-                Cargar Fixture Inventario
-              </button>
-            </div>
-
+          <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
             <button
               className="btn btn-primary"
+              style={{ padding: '10px 24px', fontSize: '0.92rem' }}
               disabled={isAnalyzing || !prompt.trim()}
               onClick={handleAnalyze}
             >
               {isAnalyzing ? (
                 <>
-                  <div className="spinner" /> Analizando con IA...
+                  <div className="spinner" /> Analizando Requisitos con IA...
                 </>
               ) : (
                 <>
@@ -963,7 +936,7 @@ export default function App() {
                           <input
                             type="text"
                             className="observation-input"
-                            placeholder="Ej: Sí, permitir que un libro tenga varios autores / Sí, un cliente puede pagar en cuotas..."
+                            placeholder="Escribe aquí tu aclaración o decisión..."
                             value={observationResolutions[idx] || ''}
                             onChange={(e) => handleResolutionChange(idx, e.target.value)}
                           />
@@ -1038,7 +1011,23 @@ export default function App() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span className="field-type">{field.type}</span>
                         {field.required && (
-                          <span style={{ color: '#f87171', fontSize: '0.7rem', fontWeight: 700 }}>*</span>
+                          <span style={{ color: '#f87171', fontSize: '0.7rem', fontWeight: 700 }} title="Campo Requerido / Obligatorio">*</span>
+                        )}
+                        {field.unique && (
+                          <span
+                            style={{
+                              color: '#38bdf8',
+                              fontSize: '0.68rem',
+                              fontWeight: 600,
+                              background: 'rgba(56, 189, 248, 0.15)',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              border: '1px solid rgba(56, 189, 248, 0.3)',
+                            }}
+                            title="Restricción: Campo Único (no repetible en base de datos)"
+                          >
+                            unique
+                          </span>
                         )}
                       </div>
                     </div>
@@ -1200,16 +1189,6 @@ export default function App() {
                     </div>
                   </div>
                 )}
-
-                <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
-                  <button
-                    className="btn btn-outline"
-                    style={{ width: '100%', fontSize: '0.82rem' }}
-                    onClick={() => handleLoadFixture('invalid')}
-                  >
-                    Simular Caso Inválido de Prueba
-                  </button>
-                </div>
               </div>
 
               {/* Botón de Aprobación Humana Explícita (Sección 15) */}

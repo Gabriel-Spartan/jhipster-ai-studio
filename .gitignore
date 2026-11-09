@@ -28,6 +28,7 @@ generated-projects/
 temp/
 storage/*
 !storage/.gitkeep
+/*.jdl
 
 # OS and IDE files
 .DS_Store

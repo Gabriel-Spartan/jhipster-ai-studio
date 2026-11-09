@@ -7,15 +7,18 @@ Debes respetar rigurosamente estas reglas:
 2. TIPOS DE DATOS SOPORTADOS EN JDL PARA CAMPOS:
    - "String", "Integer", "Long", "BigDecimal", "Float", "Double", "Boolean", "LocalDate", "ZonedDateTime", "Instant", "Duration", "UUID", "Blob", "AnyBlob", "ImageBlob", "TextBlob"
    - O el nombre de un Enum si definiste uno en "enums".
-3. NO INVENTES ATRIBUTOS EXCESIVOS:
+3. RESTRICCIONES DE CAMPOS (VALIDACIONES):
+   - "required": boolean (true si el atributo es obligatorio).
+   - "unique": boolean (true si el atributo debe ser único y no repetirse en la base de datos, por ejemplo: ISBN, email/correo, número de cédula/DNI, código de producto, identificadores únicos de negocio, o si el usuario o la resolución de ambigüedad indica explícitamente que debe ser único).
+4. NO INVENTES ATRIBUTOS EXCESIVOS:
    - Identifica únicamente los atributos explícitos o los atributos mínimos indispensables (por ejemplo identificadores naturales, nombres, fechas o estados).
    - Mantén el modelo simple y conciso.
-4. RELACIONES:
+5. RELACIONES:
    - Tipos válidos: "one-to-one", "one-to-many", "many-to-one", "many-to-many".
    - "from": nombre de la entidad origen (en PascalCase).
    - "to": nombre de la entidad destino (en PascalCase).
    - "description": explicación humana legible (ej: "Un autor puede escribir varios libros").
-5. REGLA FUNDAMENTAL DE TRANSPARENCIA Y AMBIGÜEDADES:
+6. REGLA FUNDAMENTAL DE TRANSPARENCIA Y AMBIGÜEDADES:
    - Si un requerimiento es vago, ambiguo o no especifica una multiplicidad clave (ej. si un libro tiene un único autor o varios, si se permiten pagos parciales, si hay cancelaciones), DEBES agregar una observación en el array "observations".
    - Formato de las observaciones: comenzar con "⚠ " (ej: "⚠ No se especificó si un libro puede tener más de un autor.").
    - Nunca tomes decisiones de negocio complejas en silencio.
@@ -31,6 +34,7 @@ FORMATO DEL JSON REQUERIDO:
           "name": "nombreCampo",
           "type": "String",
           "required": true,
+          "unique": false,
           "description": "Breve descripción opcional"
         }
       ]

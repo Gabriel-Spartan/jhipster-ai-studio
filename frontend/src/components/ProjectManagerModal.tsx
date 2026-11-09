@@ -236,7 +236,7 @@ export function ProjectManagerModal({
             <input
               type="text"
               className="select"
-              placeholder="Nombre del proyecto (ej: Clinica Dental)"
+              placeholder="Nombre del proyecto"
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               style={{ cursor: 'text' }}
@@ -334,6 +334,19 @@ export function ProjectManagerModal({
                       <span style={{ fontWeight: 700, color: '#f3f4f6', fontSize: '0.95rem' }}>
                         {proj.name}
                       </span>
+                      {proj.jdl ? (
+                        <span className="badge badge-success" style={{ fontSize: '0.72rem', background: 'rgba(52, 211, 153, 0.15)', color: '#34d399', border: '1px solid rgba(52, 211, 153, 0.3)' }}>
+                          ✓ JDL Listo (Paso {proj.currentStep || 3})
+                        </span>
+                      ) : proj.analysis ? (
+                        <span className="badge badge-warning" style={{ fontSize: '0.72rem', background: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.3)' }}>
+                          ⏳ En Análisis (Paso 2)
+                        </span>
+                      ) : (
+                        <span className="badge badge-info" style={{ fontSize: '0.72rem', background: 'rgba(129, 140, 248, 0.15)', color: '#818cf8', border: '1px solid rgba(129, 140, 248, 0.3)' }}>
+                          📝 Requisitos (Paso 1)
+                        </span>
+                      )}
                       {proj.analysis?.entities && (
                         <span className="badge badge-info" style={{ fontSize: '0.72rem' }}>
                           <Database size={11} /> {proj.analysis.entities.length} tablas
