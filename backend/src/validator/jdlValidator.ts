@@ -117,15 +117,30 @@ export function validateJdlContent(jdlText: string): ValidationResult {
 
   // 4. Analizar bloques de relaciones
   let relationshipsFound = 0;
-  const relBlockRegex = /relationship\s+(OneToOne|OneToMany|ManyToOne|ManyToMany)\s*\{([^}]+)\}/gm;
-  while ((match = relBlockRegex.exec(jdlText)) !== null) {
-    const relType = match[1];
-    const relBody = match[2];
+  const relBlockHeaderRegex = /relationship\s+(OneToOne|OneToMany|ManyToOne|ManyToMany)\s*\{/g;
+  let relMatch: RegExpExecArray | null;
+
+  while ((relMatch = relBlockHeaderRegex.exec(jdlText)) !== null) {
+    const relType = relMatch[1];
+    const startIndex = relMatch.index + relMatch[0].length;
+    let braceCount = 1;
+    let endIndex = startIndex;
+
+    while (endIndex < jdlText.length && braceCount > 0) {
+      if (jdlText[endIndex] === '{') braceCount++;
+      else if (jdlText[endIndex] === '}') braceCount--;
+      endIndex++;
+    }
+
+    const relBody = jdlText.substring(startIndex, endIndex - 1);
     const relLines = relBody.split('\n');
 
     for (let rIdx = 0; rIdx < relLines.length; rIdx++) {
-      const relLine = relLines[rIdx].trim();
-      if (!relLine || relLine.startsWith('//')) continue;
+      let relLine = relLines[rIdx].trim();
+      if (!relLine || relLine.startsWith('//') || relLine.startsWith('/*')) continue;
+      if (relLine.endsWith(',')) {
+        relLine = relLine.slice(0, -1).trim();
+      }
 
       relationshipsFound++;
 
@@ -142,8 +157,8 @@ export function validateJdlContent(jdlText: string): ValidationResult {
       const leftPart = relLine.substring(0, toIndex).trim();
       const rightPart = relLine.substring(toIndex + 4).trim();
 
-      const fromEntity = leftPart.replace(/\{.*\}/, '').trim();
-      const toEntity = rightPart.split(/\s+/)[0].replace(/\{.*\}/, '').trim();
+      const fromEntity = leftPart.replace(/\{.*$/, '').trim();
+      const toEntity = rightPart.split(/[\s{]+/)[0].trim();
 
       if (!entitiesFound.has(fromEntity)) {
         errors.push({

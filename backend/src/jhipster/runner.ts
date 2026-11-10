@@ -105,18 +105,26 @@ export class JHipsterRunner {
     jdlPath: string,
     skipInstall: boolean
   ) {
-    const args = ['-y', 'generator-jhipster', 'jdl', jdlPath, '--no-insight', '--force'];
+    const isWin = process.platform === 'win32';
+    // Usar jhipster directamente o npx con especificación explícita de paquete
+    const cmd = isWin ? 'jhipster.cmd' : 'jhipster';
+    // Usar ruta relativa o nombre de archivo para evitar problemas con rutas que contienen espacios en Windows
+    let jdlArg = path.relative(projectDir, jdlPath) || path.basename(jdlPath);
+    if (jdlArg.includes(' ') && !jdlArg.startsWith('"')) {
+      jdlArg = `"${jdlArg}"`;
+    }
+    const args = ['jdl', jdlArg, '--no-insight', '--force', '--skip-sample-repository'];
     if (skipInstall) {
       args.push('--skip-install');
       args.push('--skip-git');
     }
 
-    job.logs.push(`[JHipster Runner] Ejecutando: npx ${args.join(' ')}`);
+    job.logs.push(`[JHipster Runner] Ejecutando: ${cmd} ${args.join(' ')}`);
 
-    const child = spawn('npx', args, {
+    const child = spawn(cmd, args, {
       cwd: projectDir,
       env: { ...process.env, CI: 'true', NODE_ENV: 'development' },
-      shell: false, // Evita shell injection
+      shell: isWin,
     });
 
     // Timeout de seguridad: 5 minutos máximo
