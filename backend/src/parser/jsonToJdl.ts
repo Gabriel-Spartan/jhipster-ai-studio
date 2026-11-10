@@ -48,8 +48,9 @@ export function generateJdlFromAnalysis(
   }
 
   // 3. Entidades y sus campos
+  const knownEntities = new Set(analysis.entities.map((e) => sanitizeEntityName(e.name).toLowerCase()));
   for (const entity of analysis.entities) {
-    lines.push(generateEntityJdl(entity));
+    lines.push(generateEntityJdl(entity, knownEntities));
     lines.push('');
   }
 
@@ -85,7 +86,7 @@ export function generateJdlFromAnalysis(
   return lines.join('\n').trim() + '\n';
 }
 
-function generateEntityJdl(entity: Entity): string {
+function generateEntityJdl(entity: Entity, knownEntities?: Set<string>): string {
   const entityName = sanitizeEntityName(entity.name);
   const lines: string[] = [];
 
@@ -95,6 +96,17 @@ function generateEntityJdl(entity: Entity): string {
   lines.push(`entity ${entityName} {`);
 
   for (const field of entity.fields) {
+    // JHipster autogenera la clave primaria 'id'
+    if (field.name.toLowerCase() === 'id') {
+      continue;
+    }
+
+    // Evitar que relaciones se escriban como atributos primitivos
+    const cleanType = sanitizeEntityName(field.type).toLowerCase();
+    if (knownEntities && knownEntities.has(cleanType)) {
+      continue;
+    }
+
     const fieldName = sanitizeFieldName(field.name);
     const fieldType = sanitizeFieldType(field.type);
     const constraints: string[] = [];

@@ -1,0 +1,100 @@
+{
+  "systemName": "AdministracionCine",
+  "entities": [
+    {
+      "name": "Movie",
+      "fields": [
+        { "name": "title", "type": "String", "required": true, "unique": true },
+        { "name": "synopsis", "type": "String", "required": false },
+        { "name": "durationMinutes", "type": "Integer", "required": true, "min": 1 },
+        { "name": "releaseDate", "type": "LocalDate", "required": true }
+      ]
+    },
+    {
+      "name": "Genre",
+      "fields": [
+        { "name": "name", "type": "String", "required": true, "unique": true }
+      ]
+    },
+    {
+      "name": "CinemaRoom",
+      "fields": [
+        { "name": "roomName", "type": "String", "required": true },
+        { "name": "capacity", "type": "Integer", "required": true, "min": 1 }
+      ]
+    },
+    {
+      "name": "Seat",
+      "fields": [
+        { "name": "rowIdentifier", "type": "String", "required": true },
+        { "name": "seatNumber", "type": "Integer", "required": true, "min": 1 },
+        { "name": "isImmersiveExperience", "type": "Boolean", "required": true },
+        { "name": "extraCharge", "type": "BigDecimal", "required": false, "min": 0 }
+      ]
+    },
+    {
+      "name": "Screening",
+      "fields": [
+        { "name": "startTime", "type": "Instant", "required": true },
+        { "name": "basePrice", "type": "BigDecimal", "required": true, "min": 0 }
+      ]
+    },
+    {
+      "name": "Ticket",
+      "fields": [
+        { "name": "buyerFirstName", "type": "String", "required": true },
+        { "name": "buyerLastName", "type": "String", "required": true },
+        { "name": "buyerEmail", "type": "String", "required": true },
+        { "name": "totalPrice", "type": "BigDecimal", "required": true, "min": 0 },
+        { "name": "purchaseDate", "type": "Instant", "required": true }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from": "Movie",
+      "to": "Genre",
+      "type": "many-to-many",
+      "description": "Una pelicula puede pertenecer a multiples generos y un genero agrupar varias peliculas"
+    },
+    {
+      "from": "Seat",
+      "to": "CinemaRoom",
+      "type": "many-to-one",
+      "description": "Multiples asientos pertenecen a una sala fisica de cine"
+    },
+    {
+      "from": "Screening",
+      "to": "Movie",
+      "type": "many-to-one",
+      "description": "Una funcion proyecta una pelicula especifica"
+    },
+    {
+      "from": "Screening",
+      "to": "CinemaRoom",
+      "type": "many-to-one",
+      "description": "Una funcion se exhibe en una sala determinada"
+    },
+    {
+      "from": "Ticket",
+      "to": "Screening",
+      "type": "many-to-one",
+      "description": "Cada boleto emitido corresponde a una funcion"
+    },
+    {
+      "from": "Ticket",
+      "to": "Seat",
+      "type": "many-to-one",
+      "description": "Cada boleto reserva un asiento especifico de la sala"
+    }
+  ],
+  "observations": [
+    "✔ [Ambiguedad resuelta]: Los titulos de las peliculas deben ser estrictamente unicos (title unique).",
+    "✔ [Ambiguedad resuelta]: Una pelicula puede tener multiples generos cinematograficos (Movie ManyToMany Genre).",
+    "✔ [Ambiguedad resuelta]: JDL no soporta directamente claves compuestas para (rowIdentifier, seatNumber, cinemaRoom). Se genera PK autogenerada para Seat y la restriccion compuesta se delega a persistencia JPA y logica de servicio.",
+    "✔ [Ambiguedad resuelta]: Se agregan asientos con experiencia envolvente vibratoria (isImmersiveExperience) con recargo de tarifa (extraCharge).",
+    "✔ [Ambiguedad resuelta]: La combinacion de screening y seat en Ticket es unica (un asiento solo se reserva una vez por funcion), resuelta con PK sintetica y validacion transaccional en el servicio de venta.",
+    "✔ [Ambiguedad resuelta]: Se capturan obligatoriamente nombre, apellido y correo electronico del comprador."
+  ]
+}
+
